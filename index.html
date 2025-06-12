@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Not a cPanel - Docker Container Management</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <!-- Login Screen -->
+    <div id="loginScreen" class="login-screen">
+        <div class="login-container">
+            <div class="login-header">
+                <i class="fab fa-docker"></i>
+                <h1>Not a cPanel</h1>
+                <p>Docker Container Management</p>
+            </div>
+            <form id="loginForm" class="login-form">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required>
+                </div>
+                <button type="submit" class="login-btn">
+                    <i class="fas fa-sign-in-alt"></i> Login
+                </button>
+                <div id="loginError" class="login-error" style="display: none;"></div>
+            </form>
+            <div class="login-footer">
+                <p>Server: 4.221.197.153 | Ubuntu + Docker</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Application (hidden by default) -->
+    <div id="mainApp" class="container" style="display: none;">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <i class="fab fa-docker"></i>
+                    <h1>Not a cPanel</h1>
+                    <span class="subtitle">Docker Container Management</span>
+                </div>
+                <div class="server-info">
+                    <span class="server-ip">Server: 4.221.197.153</span>
+                    <span class="username">User: bleedadmin</span>
+                    <span class="os-info">Ubuntu + Docker</span>
+                    <button class="logout-btn" onclick="logout()">
+                        <i class="fas fa-sign-out-alt"></i> Logout
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Navigation -->
+        <nav class="sidebar">
+            <ul class="nav-menu">
+                <li class="nav-item active" data-section="dashboard">
+                    <i class="fas fa-tachometer-alt"></i>
+                    <span>Dashboard</span>
+                </li>
+                <li class="nav-item" data-section="containers">
+                    <i class="fab fa-docker"></i>
+                    <span>Docker Containers</span>
+                </li>
+                <li class="nav-item" data-section="nginx">
+                    <i class="fas fa-server"></i>
+                    <span>Nginx Management</span>
+                </li>
+                <li class="nav-item" data-section="monitoring">
+                    <i class="fas fa-chart-line"></i>
+                    <span>Monitoring</span>
+                </li>
+                <li class="nav-item" data-section="logs">
+                    <i class="fas fa-file-alt"></i>
+                    <span>Container Logs</span>
+                </li>
+                <li class="nav-item" data-section="terminal">
+                    <i class="fas fa-terminal"></i>
+                    <span>Terminal</span>
+                </li>
+            </ul>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Dashboard Section -->
+            <section id="dashboard" class="content-section active">
+                <h2>Docker Container Dashboard</h2>
+                
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon docker">
+                            <i class="fab fa-docker"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3>Total Containers</h3>
+                            <span class="stat-number">10</span>
+                            <span class="stat-label">Running</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon nginx">
+                            <i class="fas fa-server"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3>Nginx Instances</h3>
+                            <span class="stat-number">10</span>
+                            <span class="stat-label">Active</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-memory"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3>Memory Usage</h3>
+                            <div class="progress-bar">
+                                <div class="progress" style="width: 60%"></div>
+                            </div>
+                            <span>3.2 GB / 5.3 GB</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-microchip"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3>CPU Usage</h3>
+                            <div class="progress-bar">
+                                <div class="progress" style="width: 35%"></div>
+                            </div>
+                            <span>35%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="container-overview">
+                    <h3>Container Status Overview</h3>
+                    <div class="container-grid" id="containerGrid">
+                        <!-- Containers will be populated by JavaScript -->
+                    </div>
+                </div>
+
+                <div class="quick-actions">
+                    <h3>Quick Actions</h3>
+                    <div class="action-buttons">
+                        <button class="action-btn" onclick="showSection('containers')">
+                            <i class="fab fa-docker"></i>
+                            Manage Containers
+                        </button>
+                        <button class="action-btn" onclick="showSection('nginx')">
+                            <i class="fas fa-server"></i>
+                            Nginx Config
+                        </button>
+                        <button class="action-btn" onclick="showSection('monitoring')">
+                            <i class="fas fa-chart-line"></i>
+                            View Monitoring
+                        </button>
+                        <button class="action-btn" onclick="showSection('terminal')">
+                            <i class="fas fa-terminal"></i>
+                            Open Terminal
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Docker Containers Section -->
+            <section id="containers" class="content-section">
+                <h2>Docker Container Management</h2>
+                
+                <div class="container-controls">
+                    <button class="btn btn-primary" onclick="refreshContainers()">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                    <button class="btn btn-success" onclick="startAllContainers()">
+                        <i class="fas fa-play"></i> Start All
+                    </button>
+                    <button class="btn btn-warning" onclick="restartAllContainers()">
+                        <i class="fas fa-redo"></i> Restart All
+                    </button>
+                    <button class="btn btn-danger" onclick="stopAllContainers()">
+                        <i class="fas fa-stop"></i> Stop All
+                    </button>
+                </div>
+
+                <div class="container-list" id="containerList">
+                    <!-- Container list will be populated by JavaScript -->
+                </div>
+            </section>
+
+            <!-- Nginx Management Section -->
+            <section id="nginx" class="content-section">
+                <h2>Nginx Configuration Management</h2>
+                
+                <div class="nginx-controls">
+                    <button class="btn btn-primary" onclick="reloadAllNginx()">
+                        <i class="fas fa-sync-alt"></i> Reload All Nginx
+                    </button>
+                    <button class="btn btn-info" onclick="testAllNginxConfig()">
+                        <i class="fas fa-check"></i> Test All Configs
+                    </button>
+                </div>
+
+                <div class="nginx-list" id="nginxList">
+                    <!-- Nginx instances will be populated by JavaScript -->
+                </div>
+
+                <div class="nginx-config-editor">
+                    <h3>Configuration Editor</h3>
+                    <div class="config-selector">
+                        <select id="configSelect" onchange="loadNginxConfig()">
+                            <option value="">Select a container to edit config</option>
+                        </select>
+                    </div>
+                    <textarea id="nginxConfigEditor" placeholder="Select a container to load its nginx configuration..."></textarea>
+                    <div class="config-actions">
+                        <button class="btn btn-success" onclick="saveNginxConfig()">
+                            <i class="fas fa-save"></i> Save Config
+                        </button>
+                        <button class="btn btn-warning" onclick="testNginxConfig()">
+                            <i class="fas fa-check"></i> Test Config
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Monitoring Section -->
+            <section id="monitoring" class="content-section">
+                <h2>Container Monitoring</h2>
+                
+                <div class="monitoring-controls">
+                    <button class="btn btn-primary" onclick="refreshStats()">
+                        <i class="fas fa-sync-alt"></i> Refresh Stats
+                    </button>
+                    <label>
+                        <input type="checkbox" id="autoRefresh" onchange="toggleAutoRefresh()"> Auto Refresh (5s)
+                    </label>
+                </div>
+
+                <div class="monitoring-grid" id="monitoringGrid">
+                    <!-- Monitoring data will be populated by JavaScript -->
+                </div>
+            </section>
+
+            <!-- Logs Section -->
+            <section id="logs" class="content-section">
+                <h2>Container Logs</h2>
+                
+                <div class="log-controls">
+                    <select id="logContainerSelect" onchange="loadContainerLogs()">
+                        <option value="">Select a container</option>
+                    </select>
+                    <button class="btn btn-primary" onclick="refreshLogs()">
+                        <i class="fas fa-sync-alt"></i> Refresh
+                    </button>
+                    <button class="btn btn-secondary" onclick="clearLogViewer()">
+                        <i class="fas fa-trash"></i> Clear
+                    </button>
+                    <label>
+                        <input type="checkbox" id="followLogs" onchange="toggleFollowLogs()"> Follow logs
+                    </label>
+                </div>
+
+                <div class="log-viewer">
+                    <pre id="logContent">Select a container to view its logs...</pre>
+                </div>
+            </section>
+
+            <!-- Terminal Section -->
+            <section id="terminal" class="content-section">
+                <h2>Terminal Access</h2>
+                
+                <div class="terminal-controls">
+                    <select id="terminalContainerSelect">
+                        <option value="host">Host System</option>
+                    </select>
+                    <button class="btn btn-primary" onclick="connectToContainer()">
+                        <i class="fas fa-terminal"></i> Connect
+                    </button>
+                    <button class="btn btn-secondary" onclick="clearTerminal()">
+                        <i class="fas fa-trash"></i> Clear
+                    </button>
+                </div>
+
+                <div class="terminal-window">
+                    <div class="terminal-header">
+                        <span id="terminalTitle">Terminal - Host System</span>
+                    </div>
+                    <div class="terminal-content" id="terminalContent">
+                        <div class="terminal-line">bleedadmin@4.221.197.153:~$ <span class="cursor">_</span></div>
+                    </div>
+                    <div class="terminal-input">
+                        <input type="text" id="terminalInput" placeholder="Enter command..." onkeypress="handleTerminalInput(event)">
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Modal for container details -->
+    <div id="containerModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <h3 id="modalTitle">Container Details</h3>
+            <div id="modalBody">
+                <!-- Modal content will be populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
