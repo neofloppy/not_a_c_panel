@@ -248,7 +248,453 @@ function showSection(sectionName) {
         case 'terminal':
             loadTerminalContainerSelect();
             break;
+        case 'postgresql':
+            loadPostgreSQLSection();
+            break;
     }
+}
+
+// PostgreSQL Management Functions
+let postgresqlStatus = {
+    installed: false,
+    running: false,
+    version: null
+};
+
+function loadPostgreSQLSection() {
+    checkPostgresStatus();
+}
+
+function checkPostgresStatus() {
+    console.log('Checking PostgreSQL status...');
+    
+    // Update UI to show checking status
+    document.getElementById('postgresInstallStatus').textContent = 'Checking...';
+    document.getElementById('postgresServiceStatus').textContent = 'Checking...';
+    
+    // Simulate API call to check PostgreSQL status
+    // In real implementation, this would call the backend API
+    setTimeout(() => {
+        // Mock status - in real implementation, get from server
+        const mockStatus = {
+            installed: Math.random() > 0.5, // Random for demo
+            running: Math.random() > 0.3,
+            version: '15.4'
+        };
+        
+        updatePostgresStatus(mockStatus);
+    }, 1000);
+}
+
+function updatePostgresStatus(status) {
+    postgresqlStatus = status;
+    
+    // Update installation status
+    const installStatusEl = document.getElementById('postgresInstallStatus');
+    if (status.installed) {
+        installStatusEl.textContent = 'Installed';
+        installStatusEl.className = 'status-value installed';
+    } else {
+        installStatusEl.textContent = 'Not Installed';
+        installStatusEl.className = 'status-value not-installed';
+    }
+    
+    // Update service status
+    const serviceStatusEl = document.getElementById('postgresServiceStatus');
+    if (status.installed) {
+        if (status.running) {
+            serviceStatusEl.textContent = 'Running';
+            serviceStatusEl.className = 'status-value running';
+        } else {
+            serviceStatusEl.textContent = 'Stopped';
+            serviceStatusEl.className = 'status-value stopped';
+        }
+    } else {
+        serviceStatusEl.textContent = 'N/A';
+        serviceStatusEl.className = 'status-value';
+    }
+    
+    // Update version
+    document.getElementById('postgresVersion').textContent = status.version || 'N/A';
+    
+    // Show/hide appropriate buttons
+    const installBtn = document.getElementById('installPostgresBtn');
+    const startBtn = document.getElementById('startPostgresBtn');
+    const stopBtn = document.getElementById('stopPostgresBtn');
+    const restartBtn = document.getElementById('restartPostgresBtn');
+    const managementSection = document.getElementById('postgresManagement');
+    
+    if (!status.installed) {
+        installBtn.style.display = 'inline-flex';
+        startBtn.style.display = 'none';
+        stopBtn.style.display = 'none';
+        restartBtn.style.display = 'none';
+        managementSection.style.display = 'none';
+    } else {
+        installBtn.style.display = 'none';
+        managementSection.style.display = 'block';
+        
+        if (status.running) {
+            startBtn.style.display = 'none';
+            stopBtn.style.display = 'inline-flex';
+            restartBtn.style.display = 'inline-flex';
+            
+            // Load databases and users if running
+            refreshDatabases();
+            refreshUsers();
+        } else {
+            startBtn.style.display = 'inline-flex';
+            stopBtn.style.display = 'none';
+            restartBtn.style.display = 'none';
+        }
+    }
+}
+
+function installPostgreSQL() {
+    if (!confirm('This will install PostgreSQL server. Continue?')) {
+        return;
+    }
+    
+    const installBtn = document.getElementById('installPostgresBtn');
+    installBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Installing...';
+    installBtn.disabled = true;
+    
+    console.log('Installing PostgreSQL...');
+    
+    // Simulate installation process
+    setTimeout(() => {
+        showNotification('PostgreSQL installation started. This may take several minutes...', 'info');
+        
+        // Simulate installation completion
+        setTimeout(() => {
+            postgresqlStatus.installed = true;
+            postgresqlStatus.running = true;
+            postgresqlStatus.version = '15.4';
+            
+            updatePostgresStatus(postgresqlStatus);
+            showNotification('PostgreSQL installed and started successfully!', 'success');
+            
+            installBtn.innerHTML = '<i class="fas fa-download"></i> Install PostgreSQL';
+            installBtn.disabled = false;
+        }, 5000);
+    }, 1000);
+}
+
+function startPostgreSQL() {
+    console.log('Starting PostgreSQL service...');
+    
+    const startBtn = document.getElementById('startPostgresBtn');
+    startBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...';
+    startBtn.disabled = true;
+    
+    setTimeout(() => {
+        postgresqlStatus.running = true;
+        updatePostgresStatus(postgresqlStatus);
+        showNotification('PostgreSQL service started successfully', 'success');
+        
+        startBtn.innerHTML = '<i class="fas fa-play"></i> Start Service';
+        startBtn.disabled = false;
+    }, 2000);
+}
+
+function stopPostgreSQL() {
+    if (!confirm('This will stop the PostgreSQL service. Continue?')) {
+        return;
+    }
+    
+    console.log('Stopping PostgreSQL service...');
+    
+    const stopBtn = document.getElementById('stopPostgresBtn');
+    stopBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Stopping...';
+    stopBtn.disabled = true;
+    
+    setTimeout(() => {
+        postgresqlStatus.running = false;
+        updatePostgresStatus(postgresqlStatus);
+        showNotification('PostgreSQL service stopped', 'warning');
+        
+        stopBtn.innerHTML = '<i class="fas fa-stop"></i> Stop Service';
+        stopBtn.disabled = false;
+    }, 2000);
+}
+
+function restartPostgreSQL() {
+    console.log('Restarting PostgreSQL service...');
+    
+    const restartBtn = document.getElementById('restartPostgresBtn');
+    restartBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Restarting...';
+    restartBtn.disabled = true;
+    
+    setTimeout(() => {
+        updatePostgresStatus(postgresqlStatus);
+        showNotification('PostgreSQL service restarted successfully', 'success');
+        
+        restartBtn.innerHTML = '<i class="fas fa-redo"></i> Restart Service';
+        restartBtn.disabled = false;
+    }, 3000);
+}
+
+// Database Management Functions
+function createDatabase(event) {
+    event.preventDefault();
+    
+    const dbName = document.getElementById('newDbName').value.trim();
+    const dbOwner = document.getElementById('newDbOwner').value.trim();
+    
+    if (!dbName) {
+        showNotification('Database name is required', 'warning');
+        return;
+    }
+    
+    console.log(`Creating database: ${dbName} with owner: ${dbOwner || 'postgres'}`);
+    
+    // Simulate database creation
+    setTimeout(() => {
+        showNotification(`Database '${dbName}' created successfully`, 'success');
+        
+        // Clear form
+        document.getElementById('newDbName').value = '';
+        document.getElementById('newDbOwner').value = '';
+        
+        // Refresh database list
+        refreshDatabases();
+    }, 1000);
+}
+
+function refreshDatabases() {
+    if (!postgresqlStatus.running) {
+        return;
+    }
+    
+    console.log('Refreshing database list...');
+    
+    const tableBody = document.getElementById('databaseTableBody');
+    const sqlSelect = document.getElementById('sqlDatabase');
+    
+    // Mock database data
+    const mockDatabases = [
+        { name: 'postgres', owner: 'postgres', size: '8.2 MB', encoding: 'UTF8' },
+        { name: 'template0', owner: 'postgres', size: '8.0 MB', encoding: 'UTF8' },
+        { name: 'template1', owner: 'postgres', size: '8.0 MB', encoding: 'UTF8' },
+        { name: 'myapp_db', owner: 'appuser', size: '15.3 MB', encoding: 'UTF8' },
+        { name: 'test_db', owner: 'postgres', size: '8.1 MB', encoding: 'UTF8' }
+    ];
+    
+    // Update table
+    tableBody.innerHTML = '';
+    sqlSelect.innerHTML = '<option value="">Select Database</option>';
+    
+    mockDatabases.forEach(db => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${db.name}</td>
+            <td>${db.owner}</td>
+            <td>${db.size}</td>
+            <td>${db.encoding}</td>
+            <td>
+                <div class="table-actions">
+                    <button class="btn btn-info" onclick="connectToDatabase('${db.name}')">
+                        <i class="fas fa-plug"></i> Connect
+                    </button>
+                    ${db.name !== 'postgres' && db.name !== 'template0' && db.name !== 'template1' ? 
+                        `<button class="btn btn-danger" onclick="dropDatabase('${db.name}')">
+                            <i class="fas fa-trash"></i> Drop
+                        </button>` : ''
+                    }
+                </div>
+            </td>
+        `;
+        tableBody.appendChild(row);
+        
+        // Add to SQL select
+        const option = document.createElement('option');
+        option.value = db.name;
+        option.textContent = db.name;
+        sqlSelect.appendChild(option);
+    });
+}
+
+function dropDatabase(dbName) {
+    if (!confirm(`Are you sure you want to drop database '${dbName}'? This action cannot be undone.`)) {
+        return;
+    }
+    
+    console.log(`Dropping database: ${dbName}`);
+    
+    setTimeout(() => {
+        showNotification(`Database '${dbName}' dropped successfully`, 'success');
+        refreshDatabases();
+    }, 1000);
+}
+
+function connectToDatabase(dbName) {
+    console.log(`Connecting to database: ${dbName}`);
+    
+    // Set the database in SQL console
+    document.getElementById('sqlDatabase').value = dbName;
+    
+    showNotification(`Connected to database '${dbName}'`, 'success');
+    
+    // Scroll to SQL console
+    document.querySelector('.sql-console').scrollIntoView({ behavior: 'smooth' });
+}
+
+// User Management Functions
+function createUser(event) {
+    event.preventDefault();
+    
+    const username = document.getElementById('newUsername').value.trim();
+    const password = document.getElementById('newUserPassword').value;
+    const isSuperuser = document.getElementById('userSuperuser').checked;
+    
+    if (!username || !password) {
+        showNotification('Username and password are required', 'warning');
+        return;
+    }
+    
+    console.log(`Creating user: ${username} (superuser: ${isSuperuser})`);
+    
+    setTimeout(() => {
+        showNotification(`User '${username}' created successfully`, 'success');
+        
+        // Clear form
+        document.getElementById('newUsername').value = '';
+        document.getElementById('newUserPassword').value = '';
+        document.getElementById('userSuperuser').checked = false;
+        
+        // Refresh user list
+        refreshUsers();
+    }, 1000);
+}
+
+function refreshUsers() {
+    if (!postgresqlStatus.running) {
+        return;
+    }
+    
+    console.log('Refreshing user list...');
+    
+    const tableBody = document.getElementById('userTableBody');
+    
+    // Mock user data
+    const mockUsers = [
+        { username: 'postgres', superuser: true, createdb: true, createrole: true },
+        { username: 'appuser', superuser: false, createdb: true, createrole: false },
+        { username: 'readonly', superuser: false, createdb: false, createrole: false }
+    ];
+    
+    tableBody.innerHTML = '';
+    
+    mockUsers.forEach(user => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${user.username}</td>
+            <td><span class="status-indicator ${user.superuser ? 'running' : 'stopped'}"></span>${user.superuser ? 'Yes' : 'No'}</td>
+            <td><span class="status-indicator ${user.createdb ? 'running' : 'stopped'}"></span>${user.createdb ? 'Yes' : 'No'}</td>
+            <td><span class="status-indicator ${user.createrole ? 'running' : 'stopped'}"></span>${user.createrole ? 'Yes' : 'No'}</td>
+            <td>
+                <div class="table-actions">
+                    <button class="btn btn-warning" onclick="changeUserPassword('${user.username}')">
+                        <i class="fas fa-key"></i> Password
+                    </button>
+                    ${user.username !== 'postgres' ? 
+                        `<button class="btn btn-danger" onclick="dropUser('${user.username}')">
+                            <i class="fas fa-user-minus"></i> Drop
+                        </button>` : ''
+                    }
+                </div>
+            </td>
+        `;
+        tableBody.appendChild(row);
+    });
+}
+
+function changeUserPassword(username) {
+    const newPassword = prompt(`Enter new password for user '${username}':`);
+    if (!newPassword) {
+        return;
+    }
+    
+    console.log(`Changing password for user: ${username}`);
+    
+    setTimeout(() => {
+        showNotification(`Password changed for user '${username}'`, 'success');
+    }, 1000);
+}
+
+function dropUser(username) {
+    if (!confirm(`Are you sure you want to drop user '${username}'?`)) {
+        return;
+    }
+    
+    console.log(`Dropping user: ${username}`);
+    
+    setTimeout(() => {
+        showNotification(`User '${username}' dropped successfully`, 'success');
+        refreshUsers();
+    }, 1000);
+}
+
+// SQL Console Functions
+function executeSQLQuery() {
+    const database = document.getElementById('sqlDatabase').value;
+    const query = document.getElementById('sqlQuery').value.trim();
+    const resultsEl = document.getElementById('sqlResults');
+    
+    if (!database) {
+        showNotification('Please select a database first', 'warning');
+        return;
+    }
+    
+    if (!query) {
+        showNotification('Please enter a SQL query', 'warning');
+        return;
+    }
+    
+    console.log(`Executing SQL query on ${database}: ${query}`);
+    
+    resultsEl.textContent = 'Executing query...';
+    
+    // Simulate query execution
+    setTimeout(() => {
+        // Mock results based on query type
+        let mockResult;
+        const lowerQuery = query.toLowerCase().trim();
+        
+        if (lowerQuery.includes('select') && lowerQuery.includes('information_schema.tables')) {
+            mockResult = `table_catalog | table_schema | table_name  | table_type
+${database}     | public       | users       | BASE TABLE
+${database}     | public       | products    | BASE TABLE
+${database}     | public       | orders      | BASE TABLE
+
+(3 rows)`;
+        } else if (lowerQuery.startsWith('select')) {
+            mockResult = `id | name        | email
+1  | John Doe    | john@example.com
+2  | Jane Smith  | jane@example.com
+3  | Bob Johnson | bob@example.com
+
+(3 rows)`;
+        } else if (lowerQuery.startsWith('create')) {
+            mockResult = 'CREATE TABLE\nQuery executed successfully.';
+        } else if (lowerQuery.startsWith('insert')) {
+            mockResult = 'INSERT 0 1\nQuery executed successfully.';
+        } else if (lowerQuery.startsWith('update')) {
+            mockResult = 'UPDATE 2\nQuery executed successfully.';
+        } else if (lowerQuery.startsWith('delete')) {
+            mockResult = 'DELETE 1\nQuery executed successfully.';
+        } else {
+            mockResult = 'Query executed successfully.';
+        }
+        
+        resultsEl.textContent = mockResult;
+        showNotification('Query executed successfully', 'success');
+    }, 1500);
+}
+
+function clearSQLConsole() {
+    document.getElementById('sqlQuery').value = '';
+    document.getElementById('sqlResults').textContent = 'Execute a query to see results...';
 }
 
 function updateDashboard() {

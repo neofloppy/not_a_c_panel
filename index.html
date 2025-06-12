@@ -72,6 +72,10 @@
                     <i class="fas fa-server"></i>
                     <span>Nginx Management</span>
                 </li>
+                <li class="nav-item" data-section="postgresql">
+                    <i class="fas fa-database"></i>
+                    <span>PostgreSQL</span>
+                </li>
                 <li class="nav-item" data-section="monitoring">
                     <i class="fas fa-chart-line"></i>
                     <span>Monitoring</span>
@@ -226,6 +230,212 @@
                         <button class="btn btn-warning" onclick="testNginxConfig()">
                             <i class="fas fa-check"></i> Test Config
                         </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- PostgreSQL Section -->
+            <section id="postgresql" class="content-section">
+                <h2>PostgreSQL Database Management</h2>
+                
+                <!-- PostgreSQL Installation Status -->
+                <div class="postgres-status-card">
+                    <h3>PostgreSQL Server Status</h3>
+                    <div class="status-info" id="postgresStatus">
+                        <div class="status-item">
+                            <span class="status-label">Installation Status:</span>
+                            <span class="status-value" id="postgresInstallStatus">Checking...</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Service Status:</span>
+                            <span class="status-value" id="postgresServiceStatus">Checking...</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Version:</span>
+                            <span class="status-value" id="postgresVersion">-</span>
+                        </div>
+                        <div class="status-item">
+                            <span class="status-label">Port:</span>
+                            <span class="status-value" id="postgresPort">5432</span>
+                        </div>
+                    </div>
+                    <div class="status-actions">
+                        <button class="btn btn-primary" onclick="checkPostgresStatus()">
+                            <i class="fas fa-sync-alt"></i> Refresh Status
+                        </button>
+                        <button class="btn btn-success" id="installPostgresBtn" onclick="installPostgreSQL()" style="display: none;">
+                            <i class="fas fa-download"></i> Install PostgreSQL
+                        </button>
+                        <button class="btn btn-success" id="startPostgresBtn" onclick="startPostgreSQL()" style="display: none;">
+                            <i class="fas fa-play"></i> Start Service
+                        </button>
+                        <button class="btn btn-warning" id="stopPostgresBtn" onclick="stopPostgreSQL()" style="display: none;">
+                            <i class="fas fa-stop"></i> Stop Service
+                        </button>
+                        <button class="btn btn-secondary" id="restartPostgresBtn" onclick="restartPostgreSQL()" style="display: none;">
+                            <i class="fas fa-redo"></i> Restart Service
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Database Management -->
+                <div class="postgres-management" id="postgresManagement" style="display: none;">
+                    <div class="postgres-section">
+                        <h3>Database Management</h3>
+                        
+                        <!-- Create Database -->
+                        <div class="create-database-form">
+                            <h4>Create New Database</h4>
+                            <form class="db-form" onsubmit="createDatabase(event)">
+                                <div class="form-row">
+                                    <input type="text" id="newDbName" placeholder="Database Name" required>
+                                    <input type="text" id="newDbOwner" placeholder="Owner (optional)">
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-plus"></i> Create Database
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+
+                        <!-- Database List -->
+                        <div class="database-list">
+                            <h4>Existing Databases</h4>
+                            <div class="db-controls">
+                                <button class="btn btn-secondary" onclick="refreshDatabases()">
+                                    <i class="fas fa-sync-alt"></i> Refresh
+                                </button>
+                            </div>
+                            <div class="db-table-container">
+                                <table class="db-table" id="databaseTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Database Name</th>
+                                            <th>Owner</th>
+                                            <th>Size</th>
+                                            <th>Encoding</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="databaseTableBody">
+                                        <!-- Databases will be populated here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- User Management -->
+                    <div class="postgres-section">
+                        <h3>User Management</h3>
+                        
+                        <!-- Create User -->
+                        <div class="create-user-form">
+                            <h4>Create New User</h4>
+                            <form class="user-form" onsubmit="createUser(event)">
+                                <div class="form-row">
+                                    <input type="text" id="newUsername" placeholder="Username" required>
+                                    <input type="password" id="newUserPassword" placeholder="Password" required>
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" id="userSuperuser"> Superuser
+                                    </label>
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-user-plus"></i> Create User
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+
+                        <!-- User List -->
+                        <div class="user-list">
+                            <h4>Database Users</h4>
+                            <div class="user-controls">
+                                <button class="btn btn-secondary" onclick="refreshUsers()">
+                                    <i class="fas fa-sync-alt"></i> Refresh
+                                </button>
+                            </div>
+                            <div class="user-table-container">
+                                <table class="user-table" id="userTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Username</th>
+                                            <th>Superuser</th>
+                                            <th>Create DB</th>
+                                            <th>Create Role</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="userTableBody">
+                                        <!-- Users will be populated here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SQL Console -->
+                    <div class="postgres-section">
+                        <h3>SQL Console</h3>
+                        <div class="sql-console">
+                            <div class="console-controls">
+                                <select id="sqlDatabase">
+                                    <option value="">Select Database</option>
+                                </select>
+                                <button class="btn btn-primary" onclick="executeSQLQuery()">
+                                    <i class="fas fa-play"></i> Execute
+                                </button>
+                                <button class="btn btn-secondary" onclick="clearSQLConsole()">
+                                    <i class="fas fa-trash"></i> Clear
+                                </button>
+                            </div>
+                            <textarea id="sqlQuery" placeholder="Enter your SQL query here...
+-- Example:
+SELECT * FROM information_schema.tables;"></textarea>
+                            <div class="sql-results">
+                                <h5>Query Results:</h5>
+                                <pre id="sqlResults">Execute a query to see results...</pre>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Connection Info -->
+                    <div class="postgres-section">
+                        <h3>Connection Information</h3>
+                        <div class="connection-info">
+                            <div class="info-card">
+                                <h5>Connection Details</h5>
+                                <div class="connection-details">
+                                    <div class="detail-item">
+                                        <strong>Host:</strong> localhost (127.0.0.1)
+                                    </div>
+                                    <div class="detail-item">
+                                        <strong>Port:</strong> 5432
+                                    </div>
+                                    <div class="detail-item">
+                                        <strong>Default Database:</strong> postgres
+                                    </div>
+                                    <div class="detail-item">
+                                        <strong>Admin User:</strong> postgres
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="info-card">
+                                <h5>Connection String Examples</h5>
+                                <div class="connection-examples">
+                                    <div class="example-item">
+                                        <strong>psql:</strong>
+                                        <code>psql -h localhost -p 5432 -U postgres -d your_database</code>
+                                    </div>
+                                    <div class="example-item">
+                                        <strong>Python:</strong>
+                                        <code>postgresql://username:password@localhost:5432/database_name</code>
+                                    </div>
+                                    <div class="example-item">
+                                        <strong>Node.js:</strong>
+                                        <code>postgres://username:password@localhost:5432/database_name</code>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </section>

@@ -217,8 +217,218 @@ class DockerManager:
         result = self.run_command(f"docker exec {container_id} nginx -t")
         return result
 
-# Initialize Docker manager
+class PostgreSQLManager:
+    def __init__(self):
+        self.postgres_user = "postgres"
+        self.postgres_db = "postgres"
+    
+    def check_installation(self):
+        """Check if PostgreSQL is installed"""
+        result = self.run_command("which psql")
+        if result['success']:
+            version_result = self.run_command("psql --version")
+            version = version_result['stdout'].split()[-1] if version_result['success'] else None
+            return {
+                'installed': True,
+                'version': version
+            }
+        return {
+            'installed': False,
+            'version': None
+        }
+    
+    def check_service_status(self):
+        """Check if PostgreSQL service is running"""
+        result = self.run_command("systemctl is-active postgresql")
+        return {
+            'running': result['success'] and result['stdout'].strip() == 'active'
+        }
+    
+    def install_postgresql(self):
+        """Install PostgreSQL server"""
+        commands = [
+            "apt update",
+            "apt install -y postgresql postgresql-contrib",
+            "systemctl start postgresql",
+            "systemctl enable postgresql"
+        ]
+        
+        results = []
+        for cmd in commands:
+            result = self.run_command(cmd)
+            results.append(result)
+            if not result['success']:
+                return {
+                    'success': False,
+                    'error': f"Failed to execute: {cmd}",
+                    'details': result
+                }
+        
+        # Set up postgres user password
+        setup_result = self.run_command(
+            "sudo -u postgres psql -c \"ALTER USER postgres PASSWORD 'postgres';\""
+        )
+        
+        return {
+            'success': True,
+            'message': 'PostgreSQL installed successfully',
+            'setup_result': setup_result
+        }
+    
+    def start_service(self):
+        """Start PostgreSQL service"""
+        result = self.run_command("systemctl start postgresql")
+        return result
+    
+    def stop_service(self):
+        """Stop PostgreSQL service"""
+        result = self.run_command("systemctl stop postgresql")
+        return result
+    
+    def restart_service(self):
+        """Restart PostgreSQL service"""
+        result = self.run_command("systemctl restart postgresql")
+        return result
+    
+    def list_databases(self):
+        """List all databases"""
+        result = self.run_command(
+            f"sudo -u postgres psql -c \"SELECT datname, pg_catalog.pg_get_userbyid(datdba) as owner, pg_size_pretty(pg_database_size(datname)) as size, datcollate as encoding FROM pg_database WHERE datistemplate = false;\" --csv"
+        )
+        
+        if result['success']:
+            lines = result['stdout'].strip().split('\n')
+            if len(lines) > 1:  # Skip header
+                databases = []
+                for line in lines[1:]:
+                    parts = line.split(',')
+                    if len(parts) >= 4:
+                        databases.append({
+                            'name': parts[0].strip('"'),
+                            'owner': parts[1].strip('"'),
+                            'size': parts[2].strip('"'),
+                            'encoding': parts[3].strip('"')
+                        })
+                return {
+                    'success': True,
+                    'databases': databases
+                }
+        
+        return {
+            'success': False,
+            'error': 'Failed to list databases',
+            'details': result
+        }
+    
+    def create_database(self, db_name, owner=None):
+        """Create a new database"""
+        owner_clause = f"OWNER {owner}" if owner else ""
+        result = self.run_command(
+            f"sudo -u postgres createdb {db_name} {owner_clause}"
+        )
+        return result
+    
+    def drop_database(self, db_name):
+        """Drop a database"""
+        result = self.run_command(f"sudo -u postgres dropdb {db_name}")
+        return result
+    
+    def list_users(self):
+        """List all database users"""
+        result = self.run_command(
+            "sudo -u postgres psql -c \"SELECT usename, usesuper, usecreatedb, usecreaterole FROM pg_user;\" --csv"
+        )
+        
+        if result['success']:
+            lines = result['stdout'].strip().split('\n')
+            if len(lines) > 1:  # Skip header
+                users = []
+                for line in lines[1:]:
+                    parts = line.split(',')
+                    if len(parts) >= 4:
+                        users.append({
+                            'username': parts[0].strip('"'),
+                            'superuser': parts[1].strip('"').lower() == 't',
+                            'createdb': parts[2].strip('"').lower() == 't',
+                            'createrole': parts[3].strip('"').lower() == 't'
+                        })
+                return {
+                    'success': True,
+                    'users': users
+                }
+        
+        return {
+            'success': False,
+            'error': 'Failed to list users',
+            'details': result
+        }
+    
+    def create_user(self, username, password, superuser=False):
+        """Create a new database user"""
+        superuser_clause = "SUPERUSER" if superuser else "NOSUPERUSER"
+        result = self.run_command(
+            f"sudo -u postgres psql -c \"CREATE USER {username} WITH PASSWORD '{password}' {superuser_clause};\""
+        )
+        return result
+    
+    def drop_user(self, username):
+        """Drop a database user"""
+        result = self.run_command(
+            f"sudo -u postgres psql -c \"DROP USER {username};\""
+        )
+        return result
+    
+    def change_user_password(self, username, new_password):
+        """Change user password"""
+        result = self.run_command(
+            f"sudo -u postgres psql -c \"ALTER USER {username} PASSWORD '{new_password}';\""
+        )
+        return result
+    
+    def execute_sql(self, database, query):
+        """Execute SQL query"""
+        # Escape single quotes in query
+        escaped_query = query.replace("'", "''")
+        
+        result = self.run_command(
+            f"sudo -u postgres psql -d {database} -c \"{escaped_query}\""
+        )
+        return result
+    
+    def run_command(self, command, shell=True):
+        """Execute a shell command and return the result"""
+        try:
+            result = subprocess.run(
+                command, 
+                shell=shell, 
+                capture_output=True, 
+                text=True, 
+                timeout=60
+            )
+            return {
+                'success': result.returncode == 0,
+                'stdout': result.stdout.strip(),
+                'stderr': result.stderr.strip(),
+                'returncode': result.returncode
+            }
+        except subprocess.TimeoutExpired:
+            return {
+                'success': False,
+                'stdout': '',
+                'stderr': 'Command timed out',
+                'returncode': -1
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'stdout': '',
+                'stderr': str(e),
+                'returncode': -1
+            }
+
+# Initialize managers
 docker_manager = DockerManager()
+postgres_manager = PostgreSQLManager()
 
 # Routes
 @app.route('/')
@@ -445,6 +655,145 @@ def execute_system_command():
         })
     
     result = docker_manager.run_command(command)
+    return jsonify(result)
+
+# PostgreSQL Management Routes
+@app.route('/api/postgresql/status')
+@require_auth
+def get_postgresql_status():
+    """Get PostgreSQL installation and service status"""
+    install_status = postgres_manager.check_installation()
+    service_status = postgres_manager.check_service_status()
+    
+    return jsonify({
+        'success': True,
+        'installed': install_status['installed'],
+        'version': install_status['version'],
+        'running': service_status['running']
+    })
+
+@app.route('/api/postgresql/install', methods=['POST'])
+@require_auth
+def install_postgresql():
+    """Install PostgreSQL server"""
+    result = postgres_manager.install_postgresql()
+    return jsonify(result)
+
+@app.route('/api/postgresql/start', methods=['POST'])
+@require_auth
+def start_postgresql():
+    """Start PostgreSQL service"""
+    result = postgres_manager.start_service()
+    return jsonify(result)
+
+@app.route('/api/postgresql/stop', methods=['POST'])
+@require_auth
+def stop_postgresql():
+    """Stop PostgreSQL service"""
+    result = postgres_manager.stop_service()
+    return jsonify(result)
+
+@app.route('/api/postgresql/restart', methods=['POST'])
+@require_auth
+def restart_postgresql():
+    """Restart PostgreSQL service"""
+    result = postgres_manager.restart_service()
+    return jsonify(result)
+
+@app.route('/api/postgresql/databases')
+@require_auth
+def list_databases():
+    """List all databases"""
+    result = postgres_manager.list_databases()
+    return jsonify(result)
+
+@app.route('/api/postgresql/databases', methods=['POST'])
+@require_auth
+def create_database():
+    """Create a new database"""
+    data = request.get_json()
+    db_name = data.get('name', '').strip()
+    owner = data.get('owner', '').strip()
+    
+    if not db_name:
+        return jsonify({
+            'success': False,
+            'error': 'Database name is required'
+        }), 400
+    
+    result = postgres_manager.create_database(db_name, owner if owner else None)
+    return jsonify(result)
+
+@app.route('/api/postgresql/databases/<db_name>', methods=['DELETE'])
+@require_auth
+def drop_database(db_name):
+    """Drop a database"""
+    result = postgres_manager.drop_database(db_name)
+    return jsonify(result)
+
+@app.route('/api/postgresql/users')
+@require_auth
+def list_users():
+    """List all database users"""
+    result = postgres_manager.list_users()
+    return jsonify(result)
+
+@app.route('/api/postgresql/users', methods=['POST'])
+@require_auth
+def create_user():
+    """Create a new database user"""
+    data = request.get_json()
+    username = data.get('username', '').strip()
+    password = data.get('password', '')
+    superuser = data.get('superuser', False)
+    
+    if not username or not password:
+        return jsonify({
+            'success': False,
+            'error': 'Username and password are required'
+        }), 400
+    
+    result = postgres_manager.create_user(username, password, superuser)
+    return jsonify(result)
+
+@app.route('/api/postgresql/users/<username>', methods=['DELETE'])
+@require_auth
+def drop_user(username):
+    """Drop a database user"""
+    result = postgres_manager.drop_user(username)
+    return jsonify(result)
+
+@app.route('/api/postgresql/users/<username>/password', methods=['POST'])
+@require_auth
+def change_user_password(username):
+    """Change user password"""
+    data = request.get_json()
+    new_password = data.get('password', '')
+    
+    if not new_password:
+        return jsonify({
+            'success': False,
+            'error': 'New password is required'
+        }), 400
+    
+    result = postgres_manager.change_user_password(username, new_password)
+    return jsonify(result)
+
+@app.route('/api/postgresql/execute', methods=['POST'])
+@require_auth
+def execute_sql():
+    """Execute SQL query"""
+    data = request.get_json()
+    database = data.get('database', '').strip()
+    query = data.get('query', '').strip()
+    
+    if not database or not query:
+        return jsonify({
+            'success': False,
+            'error': 'Database and query are required'
+        }), 400
+    
+    result = postgres_manager.execute_sql(database, query)
     return jsonify(result)
 
 if __name__ == '__main__':

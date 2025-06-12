@@ -28,6 +28,8 @@ python3 server.py
 - **Dashboard**: Overview of all Docker containers and system resources
 - **Container Management**: Start, stop, restart, and monitor Docker containers
 - **Nginx Configuration**: Edit and manage Nginx configurations for each container
+- **PostgreSQL Management**: Install, configure, and manage PostgreSQL database server
+- **Database Operations**: Create/drop databases, manage users, execute SQL queries
 - **Real-time Monitoring**: View CPU, memory, and network usage for containers
 - **Log Viewer**: Access and follow container logs in real-time
 - **Terminal Access**: Execute commands on the host system or inside containers
@@ -103,6 +105,14 @@ The control panel is protected by authentication. Use these credentials to log i
 - **Test Configuration**: Validate Nginx configs before applying
 - **Reload Nginx**: Apply configuration changes without restarting containers
 
+### PostgreSQL Management
+- **Installation**: One-click PostgreSQL server installation
+- **Service Control**: Start, stop, and restart PostgreSQL service
+- **Database Management**: Create, drop, and manage databases
+- **User Management**: Create users, set permissions, change passwords
+- **SQL Console**: Execute SQL queries with real-time results
+- **Connection Info**: Get connection strings for various programming languages
+
 ### Monitoring
 - **Real-time Stats**: View CPU, memory, and network usage
 - **Auto-refresh**: Enable automatic updates every 5 seconds
@@ -135,6 +145,21 @@ The backend provides a REST API for all operations:
 - `POST /api/containers/{id}/nginx/config` - Update Nginx config
 - `POST /api/containers/{id}/nginx/reload` - Reload Nginx
 - `POST /api/containers/{id}/nginx/test` - Test Nginx config
+
+### PostgreSQL Management
+- `GET /api/postgresql/status` - Get PostgreSQL installation and service status
+- `POST /api/postgresql/install` - Install PostgreSQL server
+- `POST /api/postgresql/start` - Start PostgreSQL service
+- `POST /api/postgresql/stop` - Stop PostgreSQL service
+- `POST /api/postgresql/restart` - Restart PostgreSQL service
+- `GET /api/postgresql/databases` - List all databases
+- `POST /api/postgresql/databases` - Create new database
+- `DELETE /api/postgresql/databases/{name}` - Drop database
+- `GET /api/postgresql/users` - List all database users
+- `POST /api/postgresql/users` - Create new user
+- `DELETE /api/postgresql/users/{username}` - Drop user
+- `POST /api/postgresql/users/{username}/password` - Change user password
+- `POST /api/postgresql/execute` - Execute SQL query
 
 ### System
 - `GET /api/system/info` - Get system information

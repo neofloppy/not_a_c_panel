@@ -865,3 +865,320 @@ input:focus, select:focus, textarea:focus {
 .hidden {
     display: none;
 }
+
+/* PostgreSQL Management Styles */
+.postgres-status-card {
+    background: white;
+    padding: 25px;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    margin-bottom: 30px;
+}
+
+.status-info {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    margin: 20px 0;
+}
+
+.status-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 5px;
+}
+
+.status-label {
+    font-weight: 500;
+    color: #2c3e50;
+}
+
+.status-value {
+    font-weight: bold;
+}
+
+.status-value.installed {
+    color: #27ae60;
+}
+
+.status-value.not-installed {
+    color: #e74c3c;
+}
+
+.status-value.running {
+    color: #27ae60;
+}
+
+.status-value.stopped {
+    color: #e74c3c;
+}
+
+.status-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 20px;
+}
+
+.postgres-management {
+    display: grid;
+    gap: 30px;
+}
+
+.postgres-section {
+    background: white;
+    padding: 25px;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.postgres-section h3 {
+    margin-bottom: 20px;
+    color: #2c3e50;
+    border-bottom: 2px solid #3498db;
+    padding-bottom: 10px;
+}
+
+.postgres-section h4 {
+    margin-bottom: 15px;
+    color: #34495e;
+}
+
+/* Database and User Forms */
+.create-database-form, .create-user-form {
+    margin-bottom: 30px;
+    padding: 20px;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.form-row {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.form-row input {
+    flex: 1;
+    min-width: 150px;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+}
+
+.checkbox-label input[type="checkbox"] {
+    width: auto;
+    margin: 0;
+}
+
+/* Tables */
+.db-table-container, .user-table-container {
+    overflow-x: auto;
+    margin-top: 15px;
+}
+
+.db-table, .user-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.db-table th, .user-table th {
+    background: #34495e;
+    color: white;
+    padding: 15px;
+    text-align: left;
+    font-weight: 500;
+}
+
+.db-table td, .user-table td {
+    padding: 12px 15px;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.db-table tr:hover, .user-table tr:hover {
+    background: #f8f9fa;
+}
+
+.db-table tr:last-child td, .user-table tr:last-child td {
+    border-bottom: none;
+}
+
+.table-actions {
+    display: flex;
+    gap: 5px;
+}
+
+.table-actions .btn {
+    padding: 5px 10px;
+    font-size: 0.8rem;
+}
+
+/* SQL Console */
+.sql-console {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 20px;
+}
+
+.console-controls {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+}
+
+.console-controls select {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    background: white;
+}
+
+#sqlQuery {
+    width: 100%;
+    height: 200px;
+    padding: 15px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    resize: vertical;
+    background: white;
+}
+
+.sql-results {
+    margin-top: 20px;
+}
+
+.sql-results h5 {
+    margin-bottom: 10px;
+    color: #2c3e50;
+}
+
+#sqlResults {
+    background: #2c3e50;
+    color: #ecf0f1;
+    padding: 15px;
+    border-radius: 5px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    max-height: 300px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+}
+
+/* Connection Info */
+.connection-info {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+}
+
+.info-card {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 8px;
+    border-left: 4px solid #3498db;
+}
+
+.info-card h5 {
+    margin-bottom: 15px;
+    color: #2c3e50;
+}
+
+.connection-details, .connection-examples {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.detail-item, .example-item {
+    padding: 8px 0;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.detail-item:last-child, .example-item:last-child {
+    border-bottom: none;
+}
+
+.example-item code {
+    display: block;
+    background: #2c3e50;
+    color: #ecf0f1;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+    margin-top: 5px;
+    word-break: break-all;
+}
+
+/* Controls */
+.db-controls, .user-controls {
+    margin-bottom: 15px;
+}
+
+/* Status indicators */
+.status-indicator {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+
+.status-indicator.running {
+    background: #27ae60;
+}
+
+.status-indicator.stopped {
+    background: #e74c3c;
+}
+
+.status-indicator.unknown {
+    background: #95a5a6;
+}
+
+/* Responsive adjustments for PostgreSQL section */
+@media (max-width: 768px) {
+    .form-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .form-row input {
+        min-width: auto;
+    }
+    
+    .status-info {
+        grid-template-columns: 1fr;
+    }
+    
+    .connection-info {
+        grid-template-columns: 1fr;
+    }
+    
+    .status-actions {
+        flex-direction: column;
+    }
+    
+    .console-controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}
