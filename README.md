@@ -1,6 +1,27 @@
 # Not a cPanel - Docker Container Management
 
-A web-based control panel for managing Docker containers running Nginx instances on Ubuntu servers.
+🐳 A modern, web-based control panel for managing Docker containers running Nginx instances on Ubuntu servers.
+
+![Not a cPanel](https://img.shields.io/badge/Docker-Container%20Management-blue?style=for-the-badge&logo=docker)
+![Authentication](https://img.shields.io/badge/Security-Authentication%20Required-green?style=for-the-badge&logo=shield)
+![License](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)
+
+## 🚀 Quick Start
+
+```bash
+# Clone the repository
+git clone <your-repo-url>
+cd not_a_c_panel
+
+# Install dependencies
+pip3 install -r requirements.txt
+
+# Start the control panel
+python3 server.py
+
+# Access at http://localhost:5000
+# Login: admin / docker123!
+```
 
 ## Features
 
