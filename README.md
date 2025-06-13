@@ -11,9 +11,14 @@
 ### Option 1: One-line Installation (Recommended)
 ```bash
 # Install directly from GitHub using curl
-# This will automatically install pip3 if it's missing
+# This will prompt for your server IP, username, and admin password
 curl -fsSL https://raw.githubusercontent.com/neofloppy/not_a_c_panel/master/install.sh | bash
 ```
+
+**During installation, you'll be prompted for:**
+- **Server IP**: Your server's public IP (auto-detected)
+- **Username**: Your system username (auto-detected)
+- **Admin Password**: Password for the control panel (default: docker123!)
 
 ### Option 2: Manual Installation
 ```bash
@@ -33,9 +38,9 @@ python3 server.py
 ```
 
 ### Access the Control Panel
-- URL: `http://localhost:5000` or `http://your-server-ip:5000`
+- URL: `http://your-server-ip:5000` (configured during installation)
 - Username: `admin`
-- Password: `docker123!`
+- Password: `[your-chosen-password]` (set during installation)
 
 ## Features
 
@@ -181,13 +186,20 @@ The backend provides a REST API for all operations:
 
 ## Configuration
 
-### Server Settings
-Edit the following variables in `server.py`:
+### Automatic Configuration
+Configuration is handled automatically during installation. The installer creates a `config.py` file with your settings:
 
 ```python
-SERVER_IP = "4.221.197.153"  # Your server IP
-USERNAME = "neofloppy"       # Your username
+SERVER_IP = "your-server-ip"     # Set during installation
+USERNAME = "your-username"       # Set during installation  
+ADMIN_PASSWORD = "your-password" # Set during installation
 ```
+
+### Manual Configuration Changes
+To change configuration after installation:
+1. Edit `config.py` with your new values
+2. Run `python3 update-templates.py` to update interface files
+3. Restart the control panel: `python3 server.py`
 
 ### Docker Compose
 Modify `docker-compose.yml` to customize:

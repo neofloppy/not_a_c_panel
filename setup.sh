@@ -109,6 +109,57 @@ if ! command -v pip3 &> /dev/null; then
     fi
 fi
 
+# Collect user configuration
+echo ""
+print_status "Configuration Setup"
+echo "==================="
+echo ""
+
+# Get server IP
+print_status "Detecting server IP address..."
+DEFAULT_IP=$(curl -s ifconfig.me 2>/dev/null || curl -s ipinfo.io/ip 2>/dev/null || echo "localhost")
+echo "Detected IP: $DEFAULT_IP"
+echo ""
+read -p "Enter your server IP address (or press Enter for $DEFAULT_IP): " SERVER_IP
+SERVER_IP=${SERVER_IP:-$DEFAULT_IP}
+
+# Get username
+DEFAULT_USER=$(whoami)
+echo ""
+read -p "Enter your username (or press Enter for $DEFAULT_USER): " USERNAME
+USERNAME=${USERNAME:-$DEFAULT_USER}
+
+# Get admin password
+echo ""
+read -s -p "Enter admin password for the control panel (or press Enter for 'docker123!'): " ADMIN_PASSWORD
+echo ""
+ADMIN_PASSWORD=${ADMIN_PASSWORD:-"docker123!"}
+
+print_success "Configuration collected:"
+print_status "Server IP: $SERVER_IP"
+print_status "Username: $USERNAME"
+print_status "Admin Password: [HIDDEN]"
+echo ""
+
+# Create configuration file
+print_status "Creating configuration file..."
+cat > config.py << EOF
+# Not a cPanel Configuration
+# Generated during installation
+
+SERVER_IP = "$SERVER_IP"
+USERNAME = "$USERNAME"
+ADMIN_PASSWORD = "$ADMIN_PASSWORD"
+EOF
+
+print_success "Configuration file created"
+
+# Update template files with configuration
+print_status "Updating template files with your configuration..."
+python3 update-templates.py
+
+print_success "Template files updated"
+
 print_status "Creating directory structure..."
 
 # Create nginx configuration directories
@@ -175,7 +226,7 @@ EOF
             </ul>
         </div>
         <p>This container is managed by the <strong>Not a cPanel</strong> control panel.</p>
-        <p><a href="http://localhost:5000" target="_blank">🔗 Access Control Panel</a></p>
+        <p><a href="http://$SERVER_IP:5000" target="_blank">🔗 Access Control Panel</a></p>
     </div>
 </body>
 </html>
@@ -234,17 +285,22 @@ echo ""
 echo "🎉 Setup Complete!"
 echo "=================="
 echo ""
+echo "Configuration:"
+echo "- Server IP: $SERVER_IP"
+echo "- Username: $USERNAME"
+echo "- Control Panel: http://$SERVER_IP:5000"
+echo ""
 echo "Next steps:"
 echo "1. Start the control panel: python3 server.py"
-echo "2. Access the control panel at: http://localhost:5000"
+echo "2. Access the control panel at: http://$SERVER_IP:5000"
 echo "3. Login with:"
 echo "   - Username: admin"
-echo "   - Password: docker123!"
+echo "   - Password: $ADMIN_PASSWORD"
 echo ""
 echo "Container URLs:"
 for i in {1..10}; do
     port=$((8000 + i))
-    echo "   - Container $i: http://localhost:$port"
+    echo "   - Container $i: http://$SERVER_IP:$port"
 done
 echo ""
 echo "📚 For more information, check the README.md file"
