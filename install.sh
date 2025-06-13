@@ -61,3 +61,32 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
+
+print_status() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+print_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+print_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+print_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+echo ""
+echo "🐳 Not a cPanel - Quick Docker Setup"
+echo "====================================="
+echo ""
+
+# Check if running as root
+if [[ $EUID -eq 0 ]]; then
+   print_error "This script should not be run as root for security reasons"
+   exit 1
+fi
+
+# ... (rest of the original install logic should be restored here, including all steps, checks, and the final prompt to run the server and display watcher.sh)
