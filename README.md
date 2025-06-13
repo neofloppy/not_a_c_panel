@@ -8,20 +8,33 @@
 
 ## 🚀 Quick Start
 
+### Option 1: One-line Installation (Recommended)
+```bash
+# Install directly from GitHub using curl
+curl -fsSL https://raw.githubusercontent.com/neofloppy/not_a_c_panel/master/install.sh | bash
+```
+
+### Option 2: Manual Installation
 ```bash
 # Clone the repository
-git clone <your-repo-url>
+git clone https://github.com/neofloppy/not_a_c_panel.git
 cd not_a_c_panel
 
-# Install dependencies
+# Run setup script
+chmod +x setup.sh
+./setup.sh
+
+# Or install manually:
 pip3 install -r requirements.txt
-
-# Start the control panel
+mkdir -p nginx-configs/{web-01,web-02,web-03,web-04,web-05,api-01,api-02,lb-01,static-01,proxy-01}
+docker-compose up -d
 python3 server.py
-
-# Access at http://localhost:5000
-# Login: admin / docker123!
 ```
+
+### Access the Control Panel
+- URL: `http://localhost:5000` or `http://your-server-ip:5000`
+- Username: `admin`
+- Password: `docker123!`
 
 ## Features
 

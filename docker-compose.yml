@@ -1,0 +1,126 @@
+version: '3.8'
+
+services:
+  web-01:
+    image: nginx:alpine
+    container_name: web-01
+    ports:
+      - "8001:80"
+    volumes:
+      - ./nginx-configs/web-01:/etc/nginx/conf.d
+      - ./web-content/web-01:/usr/share/nginx/html
+    restart: unless-stopped
+    networks:
+      - nginx-network
+
+  web-02:
+    image: nginx:alpine
+    container_name: web-02
+    ports:
+      - "8002:80"
+    volumes:
+      - ./nginx-configs/web-02:/etc/nginx/conf.d
+      - ./web-content/web-02:/usr/share/nginx/html
+    restart: unless-stopped
+    networks:
+      - nginx-network
+
+  web-03:
+    image: nginx:alpine
+    container_name: web-03
+    ports:
+      - "8003:80"
+    volumes:
+      - ./nginx-configs/web-03:/etc/nginx/conf.d
+      - ./web-content/web-03:/usr/share/nginx/html
+    restart: unless-stopped
+    networks:
+      - nginx-network
+
+  web-04:
+    image: nginx:alpine
+    container_name: web-04
+    ports:
+      - "8004:80"
+    volumes:
+      - ./nginx-configs/web-04:/etc/nginx/conf.d
+      - ./web-content/web-04:/usr/share/nginx/html
+    restart: unless-stopped
+    networks:
+      - nginx-network
+
+  web-05:
+    image: nginx:alpine
+    container_name: web-05
+    ports:
+      - "8005:80"
+    volumes:
+      - ./nginx-configs/web-05:/etc/nginx/conf.d
+      - ./web-content/web-05:/usr/share/nginx/html
+    restart: unless-stopped
+    networks:
+      - nginx-network
+
+  api-01:
+    image: nginx:alpine
+    container_name: api-01
+    ports:
+      - "8006:80"
+    volumes:
+      - ./nginx-configs/api-01:/etc/nginx/conf.d
+      - ./web-content/api-01:/usr/share/nginx/html
+    restart: unless-stopped
+    networks:
+      - nginx-network
+
+  api-02:
+    image: nginx:alpine
+    container_name: api-02
+    ports:
+      - "8007:80"
+    volumes:
+      - ./nginx-configs/api-02:/etc/nginx/conf.d
+      - ./web-content/api-02:/usr/share/nginx/html
+    restart: unless-stopped
+    networks:
+      - nginx-network
+
+  lb-01:
+    image: nginx:alpine
+    container_name: lb-01
+    ports:
+      - "8008:80"
+    volumes:
+      - ./nginx-configs/lb-01:/etc/nginx/conf.d
+      - ./web-content/lb-01:/usr/share/nginx/html
+    restart: unless-stopped
+    networks:
+      - nginx-network
+
+  static-01:
+    image: nginx:alpine
+    container_name: static-01
+    ports:
+      - "8009:80"
+    volumes:
+      - ./nginx-configs/static-01:/etc/nginx/conf.d
+      - ./web-content/static-01:/usr/share/nginx/html
+    restart: unless-stopped
+    networks:
+      - nginx-network
+
+  proxy-01:
+    image: nginx:alpine
+    container_name: proxy-01
+    ports:
+      - "8010:80"
+    volumes:
+      - ./nginx-configs/proxy-01:/etc/nginx/conf.d
+      - ./web-content/proxy-01:/usr/share/nginx/html
+    restart: unless-stopped
+    networks:
+      - nginx-network
+
+networks:
+  nginx-network:
+    driver: bridge
