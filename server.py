@@ -29,20 +29,31 @@ import os
 CONFIG_FILE = "config.py"
 if os.path.exists(CONFIG_FILE):
     try:
-        exec(open(CONFIG_FILE).read())
+        config_globals = {}
+        exec(open(CONFIG_FILE).read(), config_globals)
+        
+        # Update variables if they exist in config
+        if 'SERVER_IP' in config_globals:
+            SERVER_IP = config_globals['SERVER_IP']
+        if 'USERNAME' in config_globals:
+            USERNAME = config_globals['USERNAME']
+        if 'ADMIN_PASSWORD' in config_globals:
+            ADMIN_PASSWORD = config_globals['ADMIN_PASSWORD']
+            
     except Exception as e:
         print(f"Warning: Could not load config file: {e}")
+        print(f"Using default values: SERVER_IP={SERVER_IP}, USERNAME={USERNAME}")
 
 # Authentication configuration
 app.secret_key = secrets.token_hex(32)  # Generate a secure secret key
 ADMIN_USERNAME = "admin"
 
 # Default password, will be overridden by config.py if it exists
-ADMIN_PASSWORD = "docker123!"
-if 'ADMIN_PASSWORD' in locals():
-    ADMIN_PASSWORD_HASH = hashlib.sha256(ADMIN_PASSWORD.encode()).hexdigest()
-else:
-    ADMIN_PASSWORD_HASH = hashlib.sha256("docker123!".encode()).hexdigest()
+if 'ADMIN_PASSWORD' not in locals():
+    ADMIN_PASSWORD = "docker123!"
+
+# Generate password hash
+ADMIN_PASSWORD_HASH = hashlib.sha256(ADMIN_PASSWORD.encode()).hexdigest()
 SESSION_TIMEOUT = timedelta(hours=4)
 
 # Store active sessions (in production, use Redis or database)
