@@ -62,6 +62,28 @@ if [[ $EUID -eq 0 ]]; then
    print_error "This script should not be run as root for security reasons"
    exit 1
 fi
+# Check if Docker is installed
+if ! command -v docker &> /dev/null; then
+    print_warning "Docker is not installed."
+    read -p "Would you like to install Docker now? (Y/n): " install_docker
+    install_docker=${install_docker:-Y}
+    if [[ "$install_docker" =~ ^[Yy]$ ]]; then
+        if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+            print_status "Installing Docker using the official convenience script..."
+            curl -fsSL https://get.docker.com | sh
+            print_success "Docker installation complete."
+        else
+            print_error "Automatic Docker installation is only supported on Linux."
+            echo "Please install Docker manually: https://docs.docker.com/get-docker/"
+            exit 1
+        fi
+    else
+        print_error "Docker is required to continue. Exiting."
+        exit 1
+    fi
+else
+    print_status "Docker is already installed."
+fi
 
 # Set installation directory
 INSTALL_DIR="$HOME/not_a_c_panel"
