@@ -11,14 +11,17 @@
 ### Option 1: One-line Installation (Recommended)
 ```bash
 # Install directly from GitHub using curl
-# This will prompt for your server IP, username, and admin password
+# This will prompt for all configuration settings
 curl -fsSL https://raw.githubusercontent.com/neofloppy/not_a_c_panel/master/install.sh | bash
 ```
 
 **During installation, you'll be prompted for:**
-- **Server IP**: Your server's public IP (auto-detected)
-- **Username**: Your system username (auto-detected)
-- **Admin Password**: Password for the control panel (default: docker123!)
+- **Server IP Address**: Your server's public IP address (required)
+- **Username**: Your system username (required)
+- **Admin Password**: Password for the control panel (required, min 6 chars)
+- **Database Password**: PostgreSQL database password (required, min 6 chars)
+- **FTP Port Range**: Passive FTP port range (default: 10000-10100)
+- **Admin Email**: Optional email for notifications
 
 ### Option 2: Manual Installation
 ```bash
@@ -38,9 +41,20 @@ python3 server.py
 ```
 
 ### Access the Control Panel
-- URL: `http://your-server-ip:5000` (configured during installation)
+- URL: `http://your-server-ip:5000` (as configured during installation)
 - Username: `admin`
-- Password: `[your-chosen-password]` (set during installation)
+- Password: `[your-chosen-password]` (as set during installation)
+
+### Database Access
+- Host: `localhost:5432`
+- Database: `notacpanel`
+- Username: `notacpanel`
+- Password: `[your-chosen-db-password]` (as set during installation)
+
+### FTP Access
+- Host: `your-server-ip:21`
+- Passive Ports: `[your-configured-range]` (default: 10000-10100)
+- Users: Created automatically per container
 
 ## Features
 

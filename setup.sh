@@ -139,17 +139,37 @@ print_success "Configuration collected:"
 print_status "Server IP: $SERVER_IP"
 print_status "Username: $USERNAME"
 print_status "Admin Password: [HIDDEN]"
+print_status "Database Password: [HIDDEN]"
+print_status "FTP Passive Ports: $FTP_PASV_MIN-$FTP_PASV_MAX"
+if [[ -n "$ADMIN_EMAIL" ]]; then
+    print_status "Admin Email: $ADMIN_EMAIL"
+fi
 echo ""
 
 # Create configuration file
 print_status "Creating configuration file..."
 cat > config.py << EOF
 # Not a cPanel Configuration
-# Generated during installation
+# Generated during installation on $(date)
 
+# Server Configuration
 SERVER_IP = "$SERVER_IP"
 USERNAME = "$USERNAME"
 ADMIN_PASSWORD = "$ADMIN_PASSWORD"
+
+# Database Configuration
+DB_PASSWORD = "$DB_PASSWORD"
+
+# FTP Configuration
+FTP_PASV_MIN = $FTP_PASV_MIN
+FTP_PASV_MAX = $FTP_PASV_MAX
+
+# Optional Settings
+ADMIN_EMAIL = "$ADMIN_EMAIL"
+
+# Installation Info
+INSTALL_DATE = "$(date)"
+INSTALL_VERSION = "1.0.0"
 EOF
 
 print_success "Configuration file created"
@@ -219,7 +239,7 @@ DROP USER IF EXISTS notacpanel;
 
 -- Create new database and user
 CREATE DATABASE notacpanel;
-CREATE USER notacpanel WITH ENCRYPTED PASSWORD 'notacpanel123';
+CREATE USER notacpanel WITH ENCRYPTED PASSWORD '$DB_PASSWORD';
 
 -- Grant all privileges
 GRANT ALL PRIVILEGES ON DATABASE notacpanel TO notacpanel;
@@ -242,7 +262,7 @@ EOF
 
 # Test database connection
 print_status "Testing PostgreSQL connection..."
-if PGPASSWORD=notacpanel123 psql -h localhost -U notacpanel -d notacpanel -c "SELECT version();" > /dev/null 2>&1; then
+if PGPASSWORD=$DB_PASSWORD psql -h localhost -U notacpanel -d notacpanel -c "SELECT version();" > /dev/null 2>&1; then
     print_success "PostgreSQL database connection successful"
 else
     print_error "PostgreSQL database connection failed"
@@ -304,8 +324,8 @@ userlist_deny=NO
 
 # Passive mode configuration
 pasv_enable=YES
-pasv_min_port=10000
-pasv_max_port=10100
+pasv_min_port=$FTP_PASV_MIN
+pasv_max_port=$FTP_PASV_MAX
 pasv_address=$SERVER_IP
 
 # Logging
@@ -338,7 +358,7 @@ fi
 
 print_success "FTP server configured successfully"
 print_status "FTP Server: $SERVER_IP:21"
-print_status "Passive ports: 10000-10100"
+print_status "Passive ports: $FTP_PASV_MIN-$FTP_PASV_MAX"
 
 # Pull common Docker images
 print_status "Pulling common Docker images..."
@@ -397,19 +417,42 @@ echo "Configuration:"
 echo "- Server IP: $SERVER_IP"
 echo "- Username: $USERNAME"
 echo "- Control Panel: http://$SERVER_IP:5000"
+echo "- PostgreSQL Database: notacpanel (user: notacpanel)"
+echo "- FTP Server: $SERVER_IP:21 (passive: $FTP_PASV_MIN-$FTP_PASV_MAX)"
+if [[ -n "$ADMIN_EMAIL" ]]; then
+    echo "- Admin Email: $ADMIN_EMAIL"
+fi
 echo ""
-echo "Next steps:"
-echo "1. Start the control panel: python3 server.py"
-echo "2. Access the control panel at: http://$SERVER_IP:5000"
-echo "3. Login with:"
-echo "   - Username: admin"
-echo "   - Password: $ADMIN_PASSWORD"
+echo "Service Management:"
+echo "- Start service: sudo systemctl start not-a-cpanel"
+echo "- Stop service: sudo systemctl stop not-a-cpanel"
+echo "- Check status: sudo systemctl status not-a-cpanel"
+echo "- View logs: sudo journalctl -u not-a-cpanel -f"
 echo ""
-echo "Container URLs:"
-for i in {1..10}; do
-    port=$((8000 + i))
-    echo "   - Container $i: http://$SERVER_IP:$port"
-done
+echo "Access Information:"
+echo "- Control Panel: http://$SERVER_IP:5000"
+echo "- Username: admin"
+echo "- Password: [as configured during installation]"
+echo ""
+echo "Database Access:"
+echo "- Host: localhost:5432"
+echo "- Database: notacpanel"
+echo "- Username: notacpanel"
+echo "- Password: [as configured during installation]"
+echo ""
+echo "Features:"
+echo "- ✅ Starts with zero containers (clean slate)"
+echo "- ✅ Create containers dynamically through web interface"
+echo "- ✅ PostgreSQL database installed and configured (native, not containerized)"
+echo "- ✅ FTP server installed and configured (native, not containerized)"
+echo "- ✅ Runs as systemd service (auto-start on boot)"
+echo "- ✅ Docker container management"
+echo "- ✅ Nginx configuration editor"
+echo ""
+echo "Management Scripts:"
+echo "- PostgreSQL: ./manage-postgres.sh [status|connect|backup|restore|info|test]"
+echo "- Configuration: ./fix-config.sh"
+echo "- Uninstall: ./uninstall.sh"
 echo ""
 echo "📚 For more information, check the README.md file"
 echo ""

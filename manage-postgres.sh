@@ -29,9 +29,21 @@ print_error() {
 # Database configuration
 DB_NAME="notacpanel"
 DB_USER="notacpanel"
-DB_PASS="notacpanel123"
 DB_HOST="localhost"
 DB_PORT="5432"
+
+# Load database password from config file
+if [ -f "config.py" ]; then
+    DB_PASS=$(grep "DB_PASSWORD" config.py | cut -d'"' -f2)
+else
+    echo "Error: config.py not found. Please run from the installation directory."
+    exit 1
+fi
+
+if [ -z "$DB_PASS" ]; then
+    echo "Error: Could not load database password from config.py"
+    exit 1
+fi
 
 show_help() {
     echo "PostgreSQL Management for Not a cPanel"
