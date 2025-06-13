@@ -103,6 +103,23 @@ if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/
             curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 -o $DOCKER_CONFIG/cli-plugins/docker-compose
             chmod +x $DOCKER_CONFIG/cli-plugins/docker-compose
             print_success "Docker Compose installation complete."
+            # Re-check for Docker Compose after install
+            if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
+                print_error "Docker Compose still not found after installation attempt."
+                echo "Debug info:"
+                echo "docker compose version output:"
+                docker compose version 2>&1 || echo "Not found"
+                echo "docker-compose version output:"
+                docker-compose version 2>&1 || echo "Not found"
+                echo "Plugin directory contents:"
+                ls -l $DOCKER_CONFIG/cli-plugins
+                echo ""
+                echo "Troubleshooting steps:"
+                echo "1. Ensure your Docker version is 20.10+ (for Compose v2 plugin support)."
+                echo "2. Restart your shell or log out/in to refresh the PATH."
+                echo "3. See https://docs.docker.com/compose/install/ for manual install instructions."
+                exit 1
+            fi
         else
             print_error "Automatic Docker Compose installation is only supported on Linux."
             echo "Please install Docker Compose manually: https://docs.docker.com/compose/install/"
