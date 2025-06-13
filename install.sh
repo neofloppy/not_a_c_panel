@@ -1,6 +1,5 @@
 #!/bin/bash
 
-cat <<'EOF'
 ███╗   ██╗███████╗ ██████╗ ███████╗██╗      ██████╗ ██████╗ ██████╗ ██╗   ██╗
 ████╗  ██║██╔════╝██╔═══██╗██╔════╝██║     ██╔═══██╗██╔══██╗██╔══██╗╚██╗ ██╔╝
 ██╔██╗ ██║█████╗  ██║   ██║█████╗  ██║     ██║   ██║██████╔╝██████╔╝ ╚████╔╝ 
@@ -19,36 +18,11 @@ cat <<'EOF'
 ⠀⠈⠻⣷⣤⣈⠙⠛⠋⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣧⠀⠀⠀⠀⠀
 ⠀⠀⠀⠈⠙⠻⠿⢿⣷⣶⣶⣶⣶⣦⣤⣤⣤⣤⣴⣾⣿⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠉⠛⠛⠛⠛⠛⠛⠋⠁⠀⠀⠀⠀⠀
-⠀⠀⠀⠀⠀⠀"i live in the kernel"⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀"i live in the kernel"⠀⠀⠀⠀⠀
 # ===========================================
 #         Welcome to Not a cPanel!
 #   The open-source Docker management panel.
 # ===========================================
-EOF
-
-# Check if Docker is installed
-if ! command -v docker &> /dev/null; then
-    echo ""
-    echo "Docker is not installed."
-    read -p "Would you like to install Docker now? (Y/n): " install_docker
-    install_docker=${install_docker:-Y}
-    if [[ "$install_docker" =~ ^[Yy]$ ]]; then
-        if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-            echo "Installing Docker using the official convenience script..."
-            curl -fsSL https://get.docker.com | sh
-            echo "Docker installation complete."
-        else
-            echo "Automatic Docker installation is only supported on Linux."
-            echo "Please install Docker manually: https://docs.docker.com/get-docker/"
-            exit 1
-        fi
-    else
-        echo "Docker is required to continue. Exiting."
-        exit 1
-    fi
-else
-    echo "Docker is already installed."
-fi
 
 # Not a cPanel - One-line Docker Installation
 # Usage: curl -fsSL https://raw.githubusercontent.com/neofloppy/not_a_c_panel/master/install.sh | bash
@@ -89,4 +63,84 @@ if [[ $EUID -eq 0 ]]; then
    exit 1
 fi
 
-# ... (rest of the original install logic should be restored here, including all steps, checks, and the final prompt to run the server and display watcher.sh)
+# Set installation directory
+INSTALL_DIR="$HOME/not_a_c_panel"
+REPO_URL="https://github.com/neofloppy/not_a_c_panel.git"
+
+print_status "Installing to: $INSTALL_DIR"
+
+# Check if git is installed
+if ! command -v git &> /dev/null; then
+    print_error "Git is not installed. Please install git first."
+    exit 1
+fi
+
+# Clone or update repository
+if [ -d "$INSTALL_DIR" ]; then
+    print_status "Directory exists, updating repository..."
+    cd "$INSTALL_DIR"
+    
+    # Check for local changes
+    if ! git diff-index --quiet HEAD --; then
+        print_warning "Local changes detected. Backing up changes..."
+        git stash push -m "Auto-backup before update $(date)"
+        print_status "Local changes backed up in git stash"
+    fi
+    
+    # Pull latest changes
+    if ! git pull origin master; then
+        print_error "Failed to update repository. Trying to reset..."
+        git fetch origin
+        git reset --hard origin/master
+        print_warning "Repository reset to latest version"
+    fi
+else
+    print_status "Cloning repository..."
+    git clone "$REPO_URL" "$INSTALL_DIR"
+    cd "$INSTALL_DIR"
+fi
+
+print_success "Repository ready"
+
+# Make setup scripts executable
+chmod +x setup.sh
+chmod +x setup-venv.sh
+
+# Check if we need to use virtual environment approach
+print_status "Checking Python environment..."
+if pip3 install --dry-run flask 2>&1 | grep -q "externally-managed-environment"; then
+    print_warning "Detected externally managed Python environment (Ubuntu 23.04+)"
+    print_status "Using virtual environment setup method..."
+    ./setup-venv.sh
+else
+    print_status "Using standard setup method..."
+    ./setup.sh
+fi
+
+print_success "Installation complete!"
+
+echo ""
+echo "🎉 Not a cPanel is now installed!"
+echo ""
+read -p "Do you want to run the server now? (Y/n): " run_server
+run_server=${run_server:-Y}
+if [[ "$run_server" =~ ^[Yy]$ ]]; then
+    cd "$INSTALL_DIR"
+    echo "Starting the server..."
+    python3 server.py &
+    sleep 2
+    echo ""
+    echo "Contents of watcher.sh:"
+    echo "-----------------------"
+    cat watcher.sh
+    echo "-----------------------"
+    echo ""
+    echo "Server is running. Visit: http://localhost:5000"
+    echo "Login: admin / docker123!"
+else
+    echo "You can start the server later by running:"
+    echo "  cd $INSTALL_DIR"
+    echo "  python3 server.py"
+    echo ""
+    echo "To view watcher.sh, run: cat watcher.sh"
+fi
