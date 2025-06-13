@@ -21,7 +21,7 @@ CORS(app)
 
 # Configuration
 SERVER_IP = "4.221.197.153"
-USERNAME = "bleedadmin"
+USERNAME = "neofloppy"
 DOCKER_COMPOSE_FILE = "docker-compose.yml"
 
 # Authentication configuration

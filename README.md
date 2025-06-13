@@ -186,7 +186,7 @@ Edit the following variables in `server.py`:
 
 ```python
 SERVER_IP = "4.221.197.153"  # Your server IP
-USERNAME = "bleedadmin"      # Your username
+USERNAME = "neofloppy"       # Your username
 ```
 
 ### Docker Compose

@@ -1153,7 +1153,7 @@ function connectToContainer() {
     
     if (select.value === 'host') {
         terminalTitle.textContent = 'Terminal - Host System';
-        addTerminalLine('bleedadmin@4.221.197.153:~$ ');
+        addTerminalLine('neofloppy@4.221.197.153:~$ ');
     } else {
         const container = containers.find(c => c.id === select.value);
         terminalTitle.textContent = `Terminal - ${container.name}`;
@@ -1163,7 +1163,7 @@ function connectToContainer() {
 
 function clearTerminal() {
     const terminalContent = document.getElementById('terminalContent');
-    terminalContent.innerHTML = '<div class="terminal-line">bleedadmin@4.221.197.153:~$ <span class="cursor">_</span></div>';
+    terminalContent.innerHTML = '<div class="terminal-line">neofloppy@4.221.197.153:~$ <span class="cursor">_</span></div>';
 }
 
 function handleTerminalInput(event) {
@@ -1201,7 +1201,7 @@ function executeTerminalCommand(command) {
         
         // Add new prompt
         if (isHost) {
-            addTerminalLine('bleedadmin@4.221.197.153:~$ <span class="cursor">_</span>');
+            addTerminalLine('neofloppy@4.221.197.153:~$ <span class="cursor">_</span>');
         } else {
             const container = containers.find(c => c.id === select.value);
             addTerminalLine(`root@${container.id.substring(0, 12)}:/# <span class="cursor">_</span>`);
@@ -1225,9 +1225,9 @@ function executeCommand(command, isHost) {
     } else if (cmd === 'ls') {
         return isHost ? 'docker-compose.yml  nginx-configs  logs  scripts' : 'bin  etc  usr  var  tmp';
     } else if (cmd === 'pwd') {
-        return isHost ? '/home/bleedadmin' : '/';
+        return isHost ? '/home/neofloppy' : '/';
     } else if (cmd === 'whoami') {
-        return isHost ? 'bleedadmin' : 'root';
+        return isHost ? 'neofloppy' : 'root';
     } else if (cmd === 'date') {
         return new Date().toString();
     } else if (cmd === 'help') {
