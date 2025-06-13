@@ -78,11 +78,20 @@ fi
 
 print_success "Repository ready"
 
-# Make setup script executable
+# Make setup scripts executable
 chmod +x setup.sh
+chmod +x setup-venv.sh
 
-print_status "Running setup script..."
-./setup.sh
+# Check if we need to use virtual environment approach
+print_status "Checking Python environment..."
+if pip3 install --dry-run flask 2>&1 | grep -q "externally-managed-environment"; then
+    print_warning "Detected externally managed Python environment (Ubuntu 23.04+)"
+    print_status "Using virtual environment setup method..."
+    ./setup-venv.sh
+else
+    print_status "Using standard setup method..."
+    ./setup.sh
+fi
 
 print_success "Installation complete!"
 

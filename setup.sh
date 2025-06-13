@@ -237,9 +237,22 @@ print_success "Nginx configurations created"
 
 # Install Python dependencies
 print_status "Installing Python dependencies..."
-pip3 install -r requirements.txt
 
-print_success "Python dependencies installed"
+# Check if we're in an externally managed environment (Ubuntu 23.04+)
+if pip3 install --dry-run flask 2>&1 | grep -q "externally-managed-environment"; then
+    print_warning "Detected externally managed Python environment"
+    print_status "Installing dependencies using system package manager..."
+    
+    # Install Python packages via apt
+    sudo apt-get update
+    sudo apt-get install -y python3-flask python3-flask-cors
+    
+    print_success "Python dependencies installed via apt"
+else
+    # Traditional pip installation
+    pip3 install -r requirements.txt
+    print_success "Python dependencies installed via pip"
+fi
 
 # Pull Docker images
 print_status "Pulling Docker images..."
