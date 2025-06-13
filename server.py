@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
+
 """
-Not a cPanel - Docker Container Management Server
-A simple Flask server to manage Docker containers and Nginx instances
+Not a cPanel - Docker Container Management System
+A web-based control panel for managing Docker containers
 """
 
 import os
@@ -11,6 +12,7 @@ import threading
 import time
 import hashlib
 import secrets
+import psycopg2
 from datetime import datetime, timedelta
 from flask import Flask, render_template, jsonify, request, send_from_directory, session
 from flask_cors import CORS
@@ -22,10 +24,17 @@ CORS(app)
 # Configuration - These will be set during installation
 SERVER_IP = "localhost"  # Default fallback
 USERNAME = "user"        # Default fallback
-DOCKER_COMPOSE_FILE = "docker-compose.yml"
+
+# PostgreSQL Configuration
+DB_CONFIG = {
+    'host': 'localhost',
+    'database': 'notacpanel',
+    'user': 'notacpanel',
+    'password': 'notacpanel123',
+    'port': 5432
+}
 
 # Try to load configuration from config file
-import os
 CONFIG_FILE = "config.py"
 if os.path.exists(CONFIG_FILE):
     try:
@@ -59,27 +68,97 @@ SESSION_TIMEOUT = timedelta(hours=4)
 # Store active sessions (in production, use Redis or database)
 active_sessions = {}
 
+# Database connection and initialization
+def get_db_connection():
+    """Get PostgreSQL database connection"""
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        return conn
+    except Exception as e:
+        print(f"Database connection error: {e}")
+        return None
+
+def init_database():
+    """Initialize database tables"""
+    conn = get_db_connection()
+    if not conn:
+        print("Warning: Could not connect to database")
+        return False
+    
+    try:
+        cursor = conn.cursor()
+        
+        # Create containers table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS containers (
+                id SERIAL PRIMARY KEY,
+                container_id VARCHAR(64) UNIQUE NOT NULL,
+                name VARCHAR(100) NOT NULL,
+                image VARCHAR(200) NOT NULL,
+                status VARCHAR(20) NOT NULL,
+                ports JSONB,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Create container_configs table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS container_configs (
+                id SERIAL PRIMARY KEY,
+                container_id VARCHAR(64) NOT NULL,
+                config_type VARCHAR(50) NOT NULL,
+                config_content TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Create system_logs table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS system_logs (
+                id SERIAL PRIMARY KEY,
+                level VARCHAR(20) NOT NULL,
+                message TEXT NOT NULL,
+                details JSONB,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print("Database initialized successfully")
+        return True
+        
+    except Exception as e:
+        print(f"Database initialization error: {e}")
+        if conn:
+            conn.close()
+        return False
+
 def require_auth(f):
     """Decorator to require authentication for API endpoints"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        auth_header = request.headers.get('Authorization')
-        if not auth_header or not auth_header.startswith('Bearer '):
+        if 'user_id' not in session:
             return jsonify({'success': False, 'error': 'Authentication required'}), 401
         
-        token = auth_header.split(' ')[1]
-        if token not in active_sessions:
-            return jsonify({'success': False, 'error': 'Invalid or expired session'}), 401
-        
-        session_data = active_sessions[token]
-        if datetime.now() > session_data['expires']:
-            del active_sessions[token]
+        user_id = session['user_id']
+        if user_id not in active_sessions:
+            session.clear()
             return jsonify({'success': False, 'error': 'Session expired'}), 401
         
-        # Extend session
-        session_data['expires'] = datetime.now() + SESSION_TIMEOUT
+        # Check session timeout
+        if datetime.now() - active_sessions[user_id]['last_activity'] > SESSION_TIMEOUT:
+            del active_sessions[user_id]
+            session.clear()
+            return jsonify({'success': False, 'error': 'Session expired'}), 401
+        
+        # Update last activity
+        active_sessions[user_id]['last_activity'] = datetime.now()
+        
         return f(*args, **kwargs)
-    
     return decorated_function
 
 def generate_session_token():
@@ -89,23 +168,20 @@ def generate_session_token():
 class DockerManager:
     def __init__(self):
         self.containers = []
-        self.compose_file = "docker-compose.yml"
         self.refresh_containers()
     
     def run_command(self, command, shell=True):
         """Execute a shell command and return the result"""
         try:
-            result = subprocess.run(
-                command, 
-                shell=shell, 
-                capture_output=True, 
-                text=True, 
-                timeout=30
-            )
+            if shell:
+                result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=30)
+            else:
+                result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+            
             return {
                 'success': result.returncode == 0,
-                'stdout': result.stdout.strip(),
-                'stderr': result.stderr.strip(),
+                'stdout': result.stdout,
+                'stderr': result.stderr,
                 'returncode': result.returncode
             }
         except subprocess.TimeoutExpired:
@@ -125,10 +201,12 @@ class DockerManager:
     
     def refresh_containers(self):
         """Refresh the list of Docker containers"""
+        self.containers = []
+        
+        # Get all containers (running and stopped)
         result = self.run_command("docker ps -a --format json")
         
         if result['success'] and result['stdout']:
-            self.containers = []
             for line in result['stdout'].split('\n'):
                 if line.strip():
                     try:
@@ -273,59 +351,6 @@ class DockerManager:
         
         return result
     
-    def remove_container(self, container_id, force=False, remove_volumes=False):
-        """Remove a Docker container"""
-        # Stop container first if it's running
-        container = self.get_container_by_id(container_id)
-        if not container:
-            return {
-                'success': False,
-                'error': 'Container not found'
-            }
-        
-        if container['status'] == 'running':
-            stop_result = self.stop_container(container_id)
-            if not stop_result['success'] and not force:
-                return {
-                    'success': False,
-                    'error': f'Failed to stop container: {stop_result["stderr"]}'
-                }
-        
-        # Remove container
-        cmd = f'docker rm {container_id}'
-        if force:
-            cmd = f'docker rm -f {container_id}'
-        
-        result = self.run_command(cmd)
-        
-        if result['success']:
-            # Optionally remove associated volumes/configs
-            if remove_volumes:
-                container_name = container['name']
-                config_dir = f'./nginx-configs/{container_name}'
-                content_dir = f'./web-content/{container_name}'
-                
-                try:
-                    import shutil
-                    if os.path.exists(config_dir):
-                        shutil.rmtree(config_dir)
-                    if os.path.exists(content_dir):
-                        shutil.rmtree(content_dir)
-                except Exception as e:
-                    result['warning'] = f'Container removed but failed to clean up directories: {str(e)}'
-            
-            # Refresh container list
-            self.refresh_containers()
-        
-        return result
-    
-    def get_container_by_id(self, container_id):
-        """Get container by ID or name"""
-        for container in self.containers:
-            if container['id'].startswith(container_id) or container['name'] == container_id:
-                return container
-        return None
-    
     def _create_default_nginx_config(self, container_name, port):
         """Create default nginx configuration for a new container"""
         config_dir = f'./nginx-configs/{container_name}'
@@ -389,7 +414,7 @@ class DockerManager:
             </ul>
         </div>
         <p>This container is managed by the <strong>Not a cPanel</strong> control panel.</p>
-        <p><a href="http://localhost:5000" target="_blank">🔗 Access Control Panel</a></p>
+        <p><a href="http://{SERVER_IP}:5000" target="_blank">🔗 Access Control Panel</a></p>
     </div>
 </body>
 </html>"""
@@ -397,350 +422,84 @@ class DockerManager:
         with open(f'{content_dir}/index.html', 'w') as f:
             f.write(html_content)
     
-    def get_docker_images(self):
-        """Get list of available Docker images"""
-        result = self.run_command("docker images --format json")
-        
-        images = []
-        if result['success'] and result['stdout']:
-            for line in result['stdout'].split('\n'):
-                if line.strip():
-                    try:
-                        image_data = json.loads(line)
-                        images.append({
-                            'repository': image_data.get('Repository', ''),
-                            'tag': image_data.get('Tag', ''),
-                            'id': image_data.get('ID', ''),
-                            'created': image_data.get('CreatedAt', ''),
-                            'size': image_data.get('Size', '')
-                        })
-                    except json.JSONDecodeError:
-                        continue
-        
-        return {
-            'success': True,
-            'images': images
-        }
-    
-    def pull_image(self, image_name):
-        """Pull a Docker image"""
-        result = self.run_command(f"docker pull {image_name}")
-        return result
-    
-    def get_container_stats(self, container_id):
-        """Get resource usage stats for a container"""
-        result = self.run_command(f"docker stats {container_id} --no-stream --format json")
-        
-        if result['success'] and result['stdout']:
-            try:
-                stats = json.loads(result['stdout'])
-                return {
-                    'cpu': float(stats.get('CPUPerc', '0%').replace('%', '')),
-                    'memory': stats.get('MemUsage', '0B / 0B'),
-                    'network': stats.get('NetIO', '0B / 0B'),
-                    'block_io': stats.get('BlockIO', '0B / 0B')
-                }
-            except (json.JSONDecodeError, ValueError):
-                pass
-        
-        return {
-            'cpu': 0.0,
-            'memory': '0B / 0B',
-            'network': '0B / 0B',
-            'block_io': '0B / 0B'
-        }
-    
     def start_container(self, container_id):
         """Start a Docker container"""
         result = self.run_command(f"docker start {container_id}")
+        if result['success']:
+            self.refresh_containers()
         return result
     
     def stop_container(self, container_id):
         """Stop a Docker container"""
         result = self.run_command(f"docker stop {container_id}")
+        if result['success']:
+            self.refresh_containers()
         return result
     
     def restart_container(self, container_id):
         """Restart a Docker container"""
         result = self.run_command(f"docker restart {container_id}")
+        if result['success']:
+            self.refresh_containers()
         return result
     
-    def get_container_logs(self, container_id, lines=100):
-        """Get logs from a Docker container"""
-        result = self.run_command(f"docker logs --tail {lines} {container_id}")
-        return result
-    
-    def exec_command_in_container(self, container_id, command):
-        """Execute a command inside a Docker container"""
-        result = self.run_command(f"docker exec {container_id} {command}")
-        return result
-    
-    def get_nginx_config(self, container_id):
-        """Get Nginx configuration from a container"""
-        result = self.run_command(f"docker exec {container_id} cat /etc/nginx/nginx.conf")
-        return result
-    
-    def set_nginx_config(self, container_id, config_content):
-        """Set Nginx configuration in a container"""
-        # Write config to temporary file
-        temp_file = f"/tmp/nginx_config_{container_id}.conf"
-        try:
-            with open(temp_file, 'w') as f:
-                f.write(config_content)
-            
-            # Copy to container
-            copy_result = self.run_command(f"docker cp {temp_file} {container_id}:/etc/nginx/nginx.conf")
-            
-            # Clean up temp file
-            os.remove(temp_file)
-            
-            if copy_result['success']:
-                # Test configuration
-                test_result = self.run_command(f"docker exec {container_id} nginx -t")
-                if test_result['success']:
-                    # Reload nginx
-                    reload_result = self.run_command(f"docker exec {container_id} nginx -s reload")
-                    return reload_result
-                else:
-                    return test_result
-            else:
-                return copy_result
-                
-        except Exception as e:
+    def remove_container(self, container_id, force=False, remove_volumes=False):
+        """Remove a Docker container"""
+        # Stop container first if it's running
+        container = self.get_container_by_id(container_id)
+        if not container:
             return {
                 'success': False,
-                'stdout': '',
-                'stderr': str(e),
-                'returncode': -1
+                'error': 'Container not found'
             }
-    
-    def reload_nginx(self, container_id):
-        """Reload Nginx in a container"""
-        result = self.run_command(f"docker exec {container_id} nginx -s reload")
-        return result
-    
-    def test_nginx_config(self, container_id):
-        """Test Nginx configuration in a container"""
-        result = self.run_command(f"docker exec {container_id} nginx -t")
-        return result
-
-class PostgreSQLManager:
-    def __init__(self):
-        self.postgres_user = "postgres"
-        self.postgres_db = "postgres"
-    
-    def check_installation(self):
-        """Check if PostgreSQL is installed"""
-        result = self.run_command("which psql")
-        if result['success']:
-            version_result = self.run_command("psql --version")
-            version = version_result['stdout'].split()[-1] if version_result['success'] else None
-            return {
-                'installed': True,
-                'version': version
-            }
-        return {
-            'installed': False,
-            'version': None
-        }
-    
-    def check_service_status(self):
-        """Check if PostgreSQL service is running"""
-        result = self.run_command("systemctl is-active postgresql")
-        return {
-            'running': result['success'] and result['stdout'].strip() == 'active'
-        }
-    
-    def install_postgresql(self):
-        """Install PostgreSQL server"""
-        commands = [
-            "apt update",
-            "apt install -y postgresql postgresql-contrib",
-            "systemctl start postgresql",
-            "systemctl enable postgresql"
-        ]
         
-        results = []
-        for cmd in commands:
-            result = self.run_command(cmd)
-            results.append(result)
-            if not result['success']:
+        if container['status'] == 'running':
+            stop_result = self.stop_container(container_id)
+            if not stop_result['success'] and not force:
                 return {
                     'success': False,
-                    'error': f"Failed to execute: {cmd}",
-                    'details': result
+                    'error': f'Failed to stop container: {stop_result["stderr"]}'
                 }
         
-        # Set up postgres user password
-        setup_result = self.run_command(
-            "sudo -u postgres psql -c \"ALTER USER postgres PASSWORD 'postgres';\""
-        )
+        # Remove container
+        cmd = f'docker rm {container_id}'
+        if force:
+            cmd = f'docker rm -f {container_id}'
         
-        return {
-            'success': True,
-            'message': 'PostgreSQL installed successfully',
-            'setup_result': setup_result
-        }
-    
-    def start_service(self):
-        """Start PostgreSQL service"""
-        result = self.run_command("systemctl start postgresql")
-        return result
-    
-    def stop_service(self):
-        """Stop PostgreSQL service"""
-        result = self.run_command("systemctl stop postgresql")
-        return result
-    
-    def restart_service(self):
-        """Restart PostgreSQL service"""
-        result = self.run_command("systemctl restart postgresql")
-        return result
-    
-    def list_databases(self):
-        """List all databases"""
-        result = self.run_command(
-            f"sudo -u postgres psql -c \"SELECT datname, pg_catalog.pg_get_userbyid(datdba) as owner, pg_size_pretty(pg_database_size(datname)) as size, datcollate as encoding FROM pg_database WHERE datistemplate = false;\" --csv"
-        )
+        result = self.run_command(cmd)
         
         if result['success']:
-            lines = result['stdout'].strip().split('\n')
-            if len(lines) > 1:  # Skip header
-                databases = []
-                for line in lines[1:]:
-                    parts = line.split(',')
-                    if len(parts) >= 4:
-                        databases.append({
-                            'name': parts[0].strip('"'),
-                            'owner': parts[1].strip('"'),
-                            'size': parts[2].strip('"'),
-                            'encoding': parts[3].strip('"')
-                        })
-                return {
-                    'success': True,
-                    'databases': databases
-                }
+            # Optionally remove associated volumes/configs
+            if remove_volumes:
+                container_name = container['name']
+                config_dir = f'./nginx-configs/{container_name}'
+                content_dir = f'./web-content/{container_name}'
+                
+                try:
+                    import shutil
+                    if os.path.exists(config_dir):
+                        shutil.rmtree(config_dir)
+                    if os.path.exists(content_dir):
+                        shutil.rmtree(content_dir)
+                except Exception as e:
+                    result['warning'] = f'Container removed but failed to clean up directories: {str(e)}'
+            
+            # Refresh container list
+            self.refresh_containers()
         
-        return {
-            'success': False,
-            'error': 'Failed to list databases',
-            'details': result
-        }
-    
-    def create_database(self, db_name, owner=None):
-        """Create a new database"""
-        owner_clause = f"OWNER {owner}" if owner else ""
-        result = self.run_command(
-            f"sudo -u postgres createdb {db_name} {owner_clause}"
-        )
         return result
     
-    def drop_database(self, db_name):
-        """Drop a database"""
-        result = self.run_command(f"sudo -u postgres dropdb {db_name}")
-        return result
-    
-    def list_users(self):
-        """List all database users"""
-        result = self.run_command(
-            "sudo -u postgres psql -c \"SELECT usename, usesuper, usecreatedb, usecreaterole FROM pg_user;\" --csv"
-        )
-        
-        if result['success']:
-            lines = result['stdout'].strip().split('\n')
-            if len(lines) > 1:  # Skip header
-                users = []
-                for line in lines[1:]:
-                    parts = line.split(',')
-                    if len(parts) >= 4:
-                        users.append({
-                            'username': parts[0].strip('"'),
-                            'superuser': parts[1].strip('"').lower() == 't',
-                            'createdb': parts[2].strip('"').lower() == 't',
-                            'createrole': parts[3].strip('"').lower() == 't'
-                        })
-                return {
-                    'success': True,
-                    'users': users
-                }
-        
-        return {
-            'success': False,
-            'error': 'Failed to list users',
-            'details': result
-        }
-    
-    def create_user(self, username, password, superuser=False):
-        """Create a new database user"""
-        superuser_clause = "SUPERUSER" if superuser else "NOSUPERUSER"
-        result = self.run_command(
-            f"sudo -u postgres psql -c \"CREATE USER {username} WITH PASSWORD '{password}' {superuser_clause};\""
-        )
-        return result
-    
-    def drop_user(self, username):
-        """Drop a database user"""
-        result = self.run_command(
-            f"sudo -u postgres psql -c \"DROP USER {username};\""
-        )
-        return result
-    
-    def change_user_password(self, username, new_password):
-        """Change user password"""
-        result = self.run_command(
-            f"sudo -u postgres psql -c \"ALTER USER {username} PASSWORD '{new_password}';\""
-        )
-        return result
-    
-    def execute_sql(self, database, query):
-        """Execute SQL query"""
-        # Escape single quotes in query
-        escaped_query = query.replace("'", "''")
-        
-        result = self.run_command(
-            f"sudo -u postgres psql -d {database} -c \"{escaped_query}\""
-        )
-        return result
-    
-    def run_command(self, command, shell=True):
-        """Execute a shell command and return the result"""
-        try:
-            result = subprocess.run(
-                command, 
-                shell=shell, 
-                capture_output=True, 
-                text=True, 
-                timeout=60
-            )
-            return {
-                'success': result.returncode == 0,
-                'stdout': result.stdout.strip(),
-                'stderr': result.stderr.strip(),
-                'returncode': result.returncode
-            }
-        except subprocess.TimeoutExpired:
-            return {
-                'success': False,
-                'stdout': '',
-                'stderr': 'Command timed out',
-                'returncode': -1
-            }
-        except Exception as e:
-            return {
-                'success': False,
-                'stdout': '',
-                'stderr': str(e),
-                'returncode': -1
-            }
-
-# Initialize managers
-docker_manager = DockerManager()
-postgres_manager = PostgreSQLManager()
+    def get_container_by_id(self, container_id):
+        """Get container by ID or name"""
+        for container in self.containers:
+            if container['id'].startswith(container_id) or container['name'] == container_id:
+                return container
+        return None
 
 # Routes
 @app.route('/')
 def index():
-    """Serve the main application"""
+    """Serve the main page"""
     return send_from_directory('.', 'index.html')
 
 @app.route('/<path:filename>')
@@ -748,87 +507,58 @@ def serve_static(filename):
     """Serve static files"""
     return send_from_directory('.', filename)
 
-@app.route('/api/auth/login', methods=['POST'])
+@app.route('/api/login', methods=['POST'])
 def login():
-    """Authenticate user and create session"""
+    """Handle user login"""
     data = request.get_json()
-    username = data.get('username', '').strip()
-    password = data.get('password', '')
+    username = data.get('username')
+    password = data.get('password')
     
     if not username or not password:
-        return jsonify({
-            'success': False,
-            'error': 'Username and password are required'
-        }), 400
-    
-    # Hash the provided password
-    password_hash = hashlib.sha256(password.encode()).hexdigest()
+        return jsonify({'success': False, 'error': 'Username and password required'}), 400
     
     # Check credentials
+    password_hash = hashlib.sha256(password.encode()).hexdigest()
+    
     if username == ADMIN_USERNAME and password_hash == ADMIN_PASSWORD_HASH:
-        # Generate session token
-        token = generate_session_token()
+        # Generate session
+        session_token = generate_session_token()
+        session['user_id'] = session_token
         
-        # Store session
-        active_sessions[token] = {
+        # Store session info
+        active_sessions[session_token] = {
             'username': username,
-            'created': datetime.now(),
-            'expires': datetime.now() + SESSION_TIMEOUT,
-            'ip': request.remote_addr
+            'login_time': datetime.now(),
+            'last_activity': datetime.now()
         }
         
         return jsonify({
             'success': True,
-            'token': token,
-            'username': username,
-            'expires': (datetime.now() + SESSION_TIMEOUT).isoformat()
+            'message': 'Login successful',
+            'user': username
         })
     else:
-        # Add a small delay to prevent brute force attacks
-        time.sleep(1)
-        return jsonify({
-            'success': False,
-            'error': 'Invalid username or password'
-        }), 401
+        return jsonify({'success': False, 'error': 'Invalid credentials'}), 401
 
-@app.route('/api/auth/logout', methods=['POST'])
+@app.route('/api/logout', methods=['POST'])
 def logout():
-    """Logout user and invalidate session"""
-    auth_header = request.headers.get('Authorization')
-    if auth_header and auth_header.startswith('Bearer '):
-        token = auth_header.split(' ')[1]
-        if token in active_sessions:
-            del active_sessions[token]
+    """Handle user logout"""
+    if 'user_id' in session:
+        user_id = session['user_id']
+        if user_id in active_sessions:
+            del active_sessions[user_id]
+        session.clear()
     
     return jsonify({'success': True, 'message': 'Logged out successfully'})
-
-@app.route('/api/auth/verify', methods=['GET'])
-@require_auth
-def verify_auth():
-    """Verify if current session is valid"""
-    return jsonify({'success': True, 'authenticated': True})
 
 @app.route('/api/containers')
 @require_auth
 def get_containers():
     """Get list of all containers"""
-    containers = docker_manager.refresh_containers()
-    
-    # Add stats for running containers
-    for container in containers:
-        if container['status'] == 'running':
-            stats = docker_manager.get_container_stats(container['id'])
-            container.update(stats)
-    
+    docker_manager.refresh_containers()
     return jsonify({
         'success': True,
-        'containers': containers,
-        'server_info': {
-            'ip': SERVER_IP,
-            'username': USERNAME,
-            'total_containers': len(containers),
-            'running_containers': len([c for c in containers if c['status'] == 'running'])
-        }
+        'containers': docker_manager.containers
     })
 
 @app.route('/api/containers', methods=['POST'])
@@ -881,6 +611,48 @@ def create_container():
     else:
         return jsonify(result), 400
 
+@app.route('/api/containers/<container_id>/start', methods=['POST'])
+@require_auth
+def start_container(container_id):
+    """Start a container"""
+    result = docker_manager.start_container(container_id)
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'message': f'Container "{container_id}" started successfully'
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/containers/<container_id>/stop', methods=['POST'])
+@require_auth
+def stop_container(container_id):
+    """Stop a container"""
+    result = docker_manager.stop_container(container_id)
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'message': f'Container "{container_id}" stopped successfully'
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/containers/<container_id>/restart', methods=['POST'])
+@require_auth
+def restart_container(container_id):
+    """Restart a container"""
+    result = docker_manager.restart_container(container_id)
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'message': f'Container "{container_id}" restarted successfully'
+        })
+    else:
+        return jsonify(result), 400
+
 @app.route('/api/containers/<container_id>', methods=['DELETE'])
 @require_auth
 def remove_container(container_id):
@@ -906,299 +678,13 @@ def remove_container(container_id):
     else:
         return jsonify(result), 400
 
-@app.route('/api/images')
-@require_auth
-def get_images():
-    """Get list of available Docker images"""
-    result = docker_manager.get_docker_images()
-    return jsonify(result)
-
-@app.route('/api/images/pull', methods=['POST'])
-@require_auth
-def pull_image():
-    """Pull a Docker image"""
-    data = request.get_json()
-    image_name = data.get('image', '').strip()
-    
-    if not image_name:
-        return jsonify({
-            'success': False,
-            'error': 'Image name is required'
-        }), 400
-    
-    result = docker_manager.pull_image(image_name)
-    
-    if result['success']:
-        return jsonify({
-            'success': True,
-            'message': f'Image "{image_name}" pulled successfully',
-            'output': result['stdout']
-        })
-    else:
-        return jsonify(result), 400
-
-@app.route('/api/containers/<container_id>/start', methods=['POST'])
-@require_auth
-def start_container(container_id):
-    """Start a container"""
-    result = docker_manager.start_container(container_id)
-    return jsonify(result)
-
-@app.route('/api/containers/<container_id>/stop', methods=['POST'])
-@require_auth
-def stop_container(container_id):
-    """Stop a container"""
-    result = docker_manager.stop_container(container_id)
-    return jsonify(result)
-
-@app.route('/api/containers/<container_id>/restart', methods=['POST'])
-@require_auth
-def restart_container(container_id):
-    """Restart a container"""
-    result = docker_manager.restart_container(container_id)
-    return jsonify(result)
-
-@app.route('/api/containers/<container_id>/logs')
-@require_auth
-def get_container_logs(container_id):
-    """Get container logs"""
-    lines = request.args.get('lines', 100, type=int)
-    result = docker_manager.get_container_logs(container_id, lines)
-    return jsonify(result)
-
-@app.route('/api/containers/<container_id>/exec', methods=['POST'])
-@require_auth
-def exec_in_container(container_id):
-    """Execute command in container"""
-    data = request.get_json()
-    command = data.get('command', '')
-    
-    if not command:
-        return jsonify({
-            'success': False,
-            'stderr': 'No command provided'
-        })
-    
-    result = docker_manager.exec_command_in_container(container_id, command)
-    return jsonify(result)
-
-@app.route('/api/containers/<container_id>/nginx/config')
-@require_auth
-def get_nginx_config(container_id):
-    """Get Nginx configuration"""
-    result = docker_manager.get_nginx_config(container_id)
-    return jsonify(result)
-
-@app.route('/api/containers/<container_id>/nginx/config', methods=['POST'])
-@require_auth
-def set_nginx_config(container_id):
-    """Set Nginx configuration"""
-    data = request.get_json()
-    config_content = data.get('config', '')
-    
-    if not config_content:
-        return jsonify({
-            'success': False,
-            'stderr': 'No configuration content provided'
-        })
-    
-    result = docker_manager.set_nginx_config(container_id, config_content)
-    return jsonify(result)
-
-@app.route('/api/containers/<container_id>/nginx/reload', methods=['POST'])
-@require_auth
-def reload_nginx(container_id):
-    """Reload Nginx in container"""
-    result = docker_manager.reload_nginx(container_id)
-    return jsonify(result)
-
-@app.route('/api/containers/<container_id>/nginx/test', methods=['POST'])
-@require_auth
-def test_nginx_config(container_id):
-    """Test Nginx configuration"""
-    result = docker_manager.test_nginx_config(container_id)
-    return jsonify(result)
-
-@app.route('/api/system/info')
-@require_auth
-def get_system_info():
-    """Get system information"""
-    # Get Docker info
-    docker_info = docker_manager.run_command("docker info --format json")
-    
-    # Get system info
-    system_info = {
-        'hostname': docker_manager.run_command("hostname")['stdout'],
-        'uptime': docker_manager.run_command("uptime")['stdout'],
-        'disk_usage': docker_manager.run_command("df -h /")['stdout'],
-        'memory_info': docker_manager.run_command("free -h")['stdout'],
-        'docker_version': docker_manager.run_command("docker --version")['stdout']
-    }
-    
-    return jsonify({
-        'success': True,
-        'system_info': system_info,
-        'docker_info': docker_info['stdout'] if docker_info['success'] else None
-    })
-
-@app.route('/api/system/command', methods=['POST'])
-@require_auth
-def execute_system_command():
-    """Execute a system command"""
-    data = request.get_json()
-    command = data.get('command', '')
-    
-    if not command:
-        return jsonify({
-            'success': False,
-            'stderr': 'No command provided'
-        })
-    
-    # Security: Only allow certain safe commands
-    allowed_commands = [
-        'docker', 'ls', 'pwd', 'whoami', 'date', 'uptime', 'df', 'free', 
-        'ps', 'top', 'htop', 'netstat', 'ss', 'systemctl'
-    ]
-    
-    command_parts = command.split()
-    if not command_parts or command_parts[0] not in allowed_commands:
-        return jsonify({
-            'success': False,
-            'stderr': f'Command not allowed: {command_parts[0] if command_parts else "empty"}'
-        })
-    
-    result = docker_manager.run_command(command)
-    return jsonify(result)
-
-# PostgreSQL Management Routes
-@app.route('/api/postgresql/status')
-@require_auth
-def get_postgresql_status():
-    """Get PostgreSQL installation and service status"""
-    install_status = postgres_manager.check_installation()
-    service_status = postgres_manager.check_service_status()
-    
-    return jsonify({
-        'success': True,
-        'installed': install_status['installed'],
-        'version': install_status['version'],
-        'running': service_status['running']
-    })
-
-@app.route('/api/postgresql/install', methods=['POST'])
-@require_auth
-def install_postgresql():
-    """Install PostgreSQL server"""
-    result = postgres_manager.install_postgresql()
-    return jsonify(result)
-
-@app.route('/api/postgresql/start', methods=['POST'])
-@require_auth
-def start_postgresql():
-    """Start PostgreSQL service"""
-    result = postgres_manager.start_service()
-    return jsonify(result)
-
-@app.route('/api/postgresql/stop', methods=['POST'])
-@require_auth
-def stop_postgresql():
-    """Stop PostgreSQL service"""
-    result = postgres_manager.stop_service()
-    return jsonify(result)
-
-@app.route('/api/postgresql/restart', methods=['POST'])
-@require_auth
-def restart_postgresql():
-    """Restart PostgreSQL service"""
-    result = postgres_manager.restart_service()
-    return jsonify(result)
-
-@app.route('/api/postgresql/databases')
-@require_auth
-def list_databases():
-    """List all databases"""
-    result = postgres_manager.list_databases()
-    return jsonify(result)
-
-@app.route('/api/postgresql/databases', methods=['POST'])
-@require_auth
-def create_database():
-    """Create a new database"""
-    data = request.get_json()
-    db_name = data.get('name', '').strip()
-    owner = data.get('owner', '').strip()
-    
-    if not db_name:
-        return jsonify({
-            'success': False,
-            'error': 'Database name is required'
-        }), 400
-    
-    result = postgres_manager.create_database(db_name, owner if owner else None)
-    return jsonify(result)
-
-@app.route('/api/postgresql/databases/<db_name>', methods=['DELETE'])
-@require_auth
-def drop_database(db_name):
-    """Drop a database"""
-    result = postgres_manager.drop_database(db_name)
-    return jsonify(result)
-
-@app.route('/api/postgresql/users')
-@require_auth
-def list_users():
-    """List all database users"""
-    result = postgres_manager.list_users()
-    return jsonify(result)
-
-@app.route('/api/postgresql/users', methods=['POST'])
-@require_auth
-def create_user():
-    """Create a new database user"""
-    data = request.get_json()
-    username = data.get('username', '').strip()
-    password = data.get('password', '')
-    superuser = data.get('superuser', False)
-    
-    if not username or not password:
-        return jsonify({
-            'success': False,
-            'error': 'Username and password are required'
-        }), 400
-    
-    result = postgres_manager.create_user(username, password, superuser)
-    return jsonify(result)
-
-@app.route('/api/postgresql/users/<username>', methods=['DELETE'])
-@require_auth
-def drop_user(username):
-    """Drop a database user"""
-    result = postgres_manager.drop_user(username)
-    return jsonify(result)
-
-@app.route('/api/postgresql/users/<username>/password', methods=['POST'])
-@require_auth
-def change_user_password(username):
-    """Change user password"""
-    data = request.get_json()
-    new_password = data.get('password', '')
-    
-    if not new_password:
-        return jsonify({
-            'success': False,
-            'error': 'New password is required'
-        }), 400
-    
-    result = postgres_manager.change_user_password(username, new_password)
-    return jsonify(result)
-
 @app.route('/api/postgresql/execute', methods=['POST'])
 @require_auth
-def execute_sql():
-    """Execute SQL query"""
+def execute_postgresql():
+    """Execute PostgreSQL query"""
     data = request.get_json()
-    database = data.get('database', '').strip()
-    query = data.get('query', '').strip()
+    database = data.get('database')
+    query = data.get('query')
     
     if not database or not query:
         return jsonify({
@@ -1206,101 +692,64 @@ def execute_sql():
             'error': 'Database and query are required'
         }), 400
     
-    result = postgres_manager.execute_sql(database, query)
-    return jsonify(result)
+    # Execute query using psycopg2
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({
+                'success': False,
+                'error': 'Could not connect to database'
+            }), 500
+        
+        cursor = conn.cursor()
+        cursor.execute(query)
+        
+        if query.strip().upper().startswith('SELECT'):
+            results = cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description]
+            data = [dict(zip(columns, row)) for row in results]
+            result = {
+                'success': True,
+                'data': data,
+                'columns': columns,
+                'row_count': len(results)
+            }
+        else:
+            conn.commit()
+            result = {
+                'success': True,
+                'message': f'Query executed successfully. Rows affected: {cursor.rowcount}',
+                'rows_affected': cursor.rowcount
+            }
+        
+        cursor.close()
+        conn.close()
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# Initialize Docker manager
+docker_manager = DockerManager()
 
 if __name__ == '__main__':
-    print(f"Starting Not a cPanel server...")
+    print("Starting Not a cPanel server...")
     print(f"Server: {SERVER_IP}")
     print(f"User: {USERNAME}")
-    print(f"Access the control panel at: http://localhost:5000")
+    print(f"Access the control panel at: http://{SERVER_IP}:5000")
     
-    # Create docker-compose.yml if it doesn't exist
-    if not os.path.exists(DOCKER_COMPOSE_FILE):
-        compose_content = """version: '3.8'
-services:
-  nginx-web-01:
-    image: nginx:latest
-    ports:
-      - "8081:80"
-    volumes:
-      - ./nginx-configs/web-01:/etc/nginx/conf.d
-    restart: unless-stopped
-
-  nginx-web-02:
-    image: nginx:latest
-    ports:
-      - "8082:80"
-    volumes:
-      - ./nginx-configs/web-02:/etc/nginx/conf.d
-    restart: unless-stopped
-
-  nginx-web-03:
-    image: nginx:latest
-    ports:
-      - "8083:80"
-    volumes:
-      - ./nginx-configs/web-03:/etc/nginx/conf.d
-    restart: unless-stopped
-
-  nginx-web-04:
-    image: nginx:latest
-    ports:
-      - "8084:80"
-    volumes:
-      - ./nginx-configs/web-04:/etc/nginx/conf.d
-    restart: unless-stopped
-
-  nginx-web-05:
-    image: nginx:latest
-    ports:
-      - "8085:80"
-    volumes:
-      - ./nginx-configs/web-05:/etc/nginx/conf.d
-    restart: unless-stopped
-
-  nginx-api-01:
-    image: nginx:latest
-    ports:
-      - "8086:80"
-    volumes:
-      - ./nginx-configs/api-01:/etc/nginx/conf.d
-    restart: unless-stopped
-
-  nginx-api-02:
-    image: nginx:latest
-    ports:
-      - "8087:80"
-    volumes:
-      - ./nginx-configs/api-02:/etc/nginx/conf.d
-    restart: unless-stopped
-
-  nginx-lb-01:
-    image: nginx:latest
-    ports:
-      - "8088:80"
-    volumes:
-      - ./nginx-configs/lb-01:/etc/nginx/conf.d
-    restart: unless-stopped
-
-  nginx-static-01:
-    image: nginx:latest
-    ports:
-      - "8089:80"
-    volumes:
-      - ./nginx-configs/static-01:/etc/nginx/conf.d
-    restart: unless-stopped
-
-  nginx-proxy-01:
-    image: nginx:latest
-    ports:
-      - "8090:80"
-    volumes:
-      - ./nginx-configs/proxy-01:/etc/nginx/conf.d
-    restart: unless-stopped
-"""
-        with open(DOCKER_COMPOSE_FILE, 'w') as f:
-            f.write(compose_content)
-        print(f"Created {DOCKER_COMPOSE_FILE}")
+    # Initialize database
+    print("Initializing database...")
+    if init_database():
+        print("Database ready")
+    else:
+        print("Warning: Database initialization failed, some features may not work")
+    
+    # Initialize Docker manager
+    print("Initializing Docker manager...")
+    print(f"Found {len(docker_manager.containers)} existing containers")
     
     app.run(host='0.0.0.0', port=5000, debug=True)
