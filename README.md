@@ -11,6 +11,7 @@
 ### Option 1: One-line Installation (Recommended)
 ```bash
 # Install directly from GitHub using curl
+# This will automatically install pip3 if it's missing
 curl -fsSL https://raw.githubusercontent.com/neofloppy/not_a_c_panel/master/install.sh | bash
 ```
 

@@ -65,10 +65,48 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
-# Check if pip3 is installed
+# Check if pip3 is installed and install if missing
 if ! command -v pip3 &> /dev/null; then
-    print_error "pip3 is not installed. Please install pip3 first."
-    exit 1
+    print_warning "pip3 is not installed. Installing pip3..."
+    
+    # Detect OS and install pip3 accordingly
+    if command -v apt-get &> /dev/null; then
+        # Ubuntu/Debian
+        print_status "Installing pip3 using apt-get..."
+        sudo apt-get update
+        sudo apt-get install -y python3-pip
+    elif command -v yum &> /dev/null; then
+        # CentOS/RHEL/Fedora
+        print_status "Installing pip3 using yum..."
+        sudo yum install -y python3-pip
+    elif command -v dnf &> /dev/null; then
+        # Fedora (newer versions)
+        print_status "Installing pip3 using dnf..."
+        sudo dnf install -y python3-pip
+    elif command -v pacman &> /dev/null; then
+        # Arch Linux
+        print_status "Installing pip3 using pacman..."
+        sudo pacman -S --noconfirm python-pip
+    elif command -v zypper &> /dev/null; then
+        # openSUSE
+        print_status "Installing pip3 using zypper..."
+        sudo zypper install -y python3-pip
+    else
+        print_error "Could not detect package manager. Please install pip3 manually:"
+        print_status "Ubuntu/Debian: sudo apt-get install python3-pip"
+        print_status "CentOS/RHEL: sudo yum install python3-pip"
+        print_status "Fedora: sudo dnf install python3-pip"
+        print_status "Arch: sudo pacman -S python-pip"
+        exit 1
+    fi
+    
+    # Verify installation
+    if command -v pip3 &> /dev/null; then
+        print_success "pip3 installed successfully"
+    else
+        print_error "Failed to install pip3. Please install it manually."
+        exit 1
+    fi
 fi
 
 print_status "Creating directory structure..."

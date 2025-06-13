@@ -13,13 +13,14 @@ curl -fsSL https://raw.githubusercontent.com/neofloppy/not_a_c_panel/master/inst
 1. **Downloads the installation script** from GitHub
 2. **Clones the repository** to `~/not_a_c_panel`
 3. **Checks prerequisites** (Docker, Docker Compose, Python 3)
-4. **Creates directory structure** for Nginx configurations
-5. **Generates default configurations** for 10 Nginx containers
-6. **Installs Python dependencies** (Flask, Flask-CORS)
-7. **Pulls Docker images** (nginx:alpine)
-8. **Starts 10 Docker containers** with Nginx
-9. **Tests connectivity** to all containers
-10. **Provides next steps** to start the control panel
+4. **Installs pip3** automatically if not present
+5. **Creates directory structure** for Nginx configurations
+6. **Generates default configurations** for 10 Nginx containers
+7. **Installs Python dependencies** (Flask, Flask-CORS)
+8. **Pulls Docker images** (nginx:alpine)
+9. **Starts 10 Docker containers** with Nginx
+10. **Tests connectivity** to all containers
+11. **Provides next steps** to start the control panel
 
 ## Alternative: Step-by-step
 
@@ -90,6 +91,7 @@ The installation script will check for these prerequisites:
 - **Docker** (will provide installation instructions if missing)
 - **Docker Compose** (will provide installation instructions if missing)
 - **Python 3.6+** (usually pre-installed on modern Linux)
+- **pip3** (will be installed automatically if missing)
 - **Git** (for cloning the repository)
 - **curl** (for downloading the script)
 

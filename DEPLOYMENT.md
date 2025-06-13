@@ -19,7 +19,7 @@ curl -fsSL https://raw.githubusercontent.com/neofloppy/not_a_c_panel/master/inst
 
 This will:
 1. Clone the repository
-2. Install dependencies
+2. Install dependencies (including pip3 if missing)
 3. Set up Docker containers
 4. Configure Nginx instances
 5. Start the control panel
@@ -216,7 +216,25 @@ chmod +x test-setup.sh
 
 4. **Python dependencies missing**
    ```bash
+   # If pip3 is not installed, install it first:
+   # Ubuntu/Debian: sudo apt-get install python3-pip
+   # CentOS/RHEL: sudo yum install python3-pip
+   # Fedora: sudo dnf install python3-pip
+   
    pip3 install -r requirements.txt
+   ```
+
+5. **pip3 not found**
+   ```bash
+   # The setup script should install this automatically, but if needed:
+   # Ubuntu/Debian
+   sudo apt-get update && sudo apt-get install python3-pip
+   
+   # CentOS/RHEL
+   sudo yum install python3-pip
+   
+   # Fedora
+   sudo dnf install python3-pip
    ```
 
 ### Log Locations
