@@ -83,6 +83,31 @@ if ! command -v docker &> /dev/null; then
     fi
 else
     print_status "Docker is already installed."
+# Check if Docker Compose is installed (v1 or v2)
+if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
+    print_warning "Docker Compose is not installed."
+    read -p "Would you like to install Docker Compose now? (Y/n): " install_compose
+    install_compose=${install_compose:-Y}
+    if [[ "$install_compose" =~ ^[Yy]$ ]]; then
+        if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+            print_status "Installing Docker Compose v2 (plugin)..."
+            DOCKER_CONFIG=${DOCKER_CONFIG:-$HOME/.docker}
+            mkdir -p $DOCKER_CONFIG/cli-plugins
+            curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 -o $DOCKER_CONFIG/cli-plugins/docker-compose
+            chmod +x $DOCKER_CONFIG/cli-plugins/docker-compose
+            print_success "Docker Compose installation complete."
+        else
+            print_error "Automatic Docker Compose installation is only supported on Linux."
+            echo "Please install Docker Compose manually: https://docs.docker.com/compose/install/"
+            exit 1
+        fi
+    else
+        print_error "Docker Compose is required to continue. Exiting."
+        exit 1
+    fi
+else
+    print_status "Docker Compose is already installed."
+fi
 fi
 
 # Set installation directory
