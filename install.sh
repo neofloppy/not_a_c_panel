@@ -55,7 +55,21 @@ fi
 if [ -d "$INSTALL_DIR" ]; then
     print_status "Directory exists, updating repository..."
     cd "$INSTALL_DIR"
-    git pull origin master
+    
+    # Check for local changes
+    if ! git diff-index --quiet HEAD --; then
+        print_warning "Local changes detected. Backing up changes..."
+        git stash push -m "Auto-backup before update $(date)"
+        print_status "Local changes backed up in git stash"
+    fi
+    
+    # Pull latest changes
+    if ! git pull origin master; then
+        print_error "Failed to update repository. Trying to reset..."
+        git fetch origin
+        git reset --hard origin/master
+        print_warning "Repository reset to latest version"
+    fi
 else
     print_status "Cloning repository..."
     git clone "$REPO_URL" "$INSTALL_DIR"
