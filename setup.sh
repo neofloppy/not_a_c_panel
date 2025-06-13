@@ -188,30 +188,165 @@ else
 fi
 
 # Install PostgreSQL
-print_status "Installing PostgreSQL..."
+print_status "Installing PostgreSQL server..."
+sudo apt-get update
 sudo apt-get install -y postgresql postgresql-contrib python3-psycopg2
 
-# Start and enable PostgreSQL
+# Start and enable PostgreSQL service
+print_status "Starting PostgreSQL service..."
 sudo systemctl start postgresql
 sudo systemctl enable postgresql
 
+# Wait for PostgreSQL to be ready
+sleep 3
+
+# Check if PostgreSQL is running
+if sudo systemctl is-active --quiet postgresql; then
+    print_success "PostgreSQL service is running"
+else
+    print_error "PostgreSQL service failed to start"
+    exit 1
+fi
+
 # Create database and user for Not a cPanel
-print_status "Setting up PostgreSQL database..."
+print_status "Setting up PostgreSQL database and user..."
+
+# Create the database and user
 sudo -u postgres psql << EOF
+-- Drop existing database and user if they exist (for clean reinstall)
+DROP DATABASE IF EXISTS notacpanel;
+DROP USER IF EXISTS notacpanel;
+
+-- Create new database and user
 CREATE DATABASE notacpanel;
 CREATE USER notacpanel WITH ENCRYPTED PASSWORD 'notacpanel123';
+
+-- Grant all privileges
 GRANT ALL PRIVILEGES ON DATABASE notacpanel TO notacpanel;
+
+-- Grant additional privileges for schema creation
+ALTER USER notacpanel CREATEDB;
+
+-- Connect to the database and grant schema privileges
+\c notacpanel;
+GRANT ALL ON SCHEMA public TO notacpanel;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO notacpanel;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO notacpanel;
+
+-- Set default privileges for future objects
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO notacpanel;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO notacpanel;
+
 \q
 EOF
 
-print_success "PostgreSQL installed and configured"
+# Test database connection
+print_status "Testing PostgreSQL connection..."
+if PGPASSWORD=notacpanel123 psql -h localhost -U notacpanel -d notacpanel -c "SELECT version();" > /dev/null 2>&1; then
+    print_success "PostgreSQL database connection successful"
+else
+    print_error "PostgreSQL database connection failed"
+    exit 1
+fi
+
+# Configure PostgreSQL for local connections
+print_status "Configuring PostgreSQL for local connections..."
+
+# Backup original pg_hba.conf
+sudo cp /etc/postgresql/*/main/pg_hba.conf /etc/postgresql/*/main/pg_hba.conf.backup
+
+# Add local connection rule for notacpanel user
+sudo sed -i '/^local.*all.*postgres.*peer/a local   notacpanel      notacpanel                              md5' /etc/postgresql/*/main/pg_hba.conf
+
+# Reload PostgreSQL configuration
+sudo systemctl reload postgresql
+
+print_success "PostgreSQL installed and configured successfully"
+print_status "Database: notacpanel"
+print_status "User: notacpanel"
+print_status "Password: notacpanel123"
+print_status "Connection: localhost:5432"
+
+# Install and configure FTP server (vsftpd)
+print_status "Installing FTP server (vsftpd)..."
+sudo apt-get install -y vsftpd
+
+# Configure vsftpd for container-based FTP access
+print_status "Configuring FTP server..."
+
+# Backup original config
+sudo cp /etc/vsftpd.conf /etc/vsftpd.conf.backup
+
+# Create new vsftpd configuration
+sudo tee /etc/vsftpd.conf > /dev/null << 'EOF'
+# Basic FTP settings
+listen=YES
+listen_ipv6=NO
+anonymous_enable=NO
+local_enable=YES
+write_enable=YES
+local_umask=022
+dirmessage_enable=YES
+use_localtime=YES
+xferlog_enable=YES
+connect_from_port_20=YES
+chroot_local_user=YES
+secure_chroot_dir=/var/run/vsftpd/empty
+pam_service_name=vsftpd
+rsa_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem
+rsa_private_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
+ssl_enable=NO
+
+# User restrictions
+userlist_enable=YES
+userlist_file=/etc/vsftpd.userlist
+userlist_deny=NO
+
+# Passive mode configuration
+pasv_enable=YES
+pasv_min_port=10000
+pasv_max_port=10100
+pasv_address=$SERVER_IP
+
+# Logging
+log_ftp_protocol=YES
+xferlog_file=/var/log/vsftpd.log
+
+# Allow users to access their container directories
+allow_writeable_chroot=YES
+EOF
+
+# Create FTP user list file
+sudo touch /etc/vsftpd.userlist
+
+# Create base FTP directory structure
+sudo mkdir -p /var/ftp/containers
+sudo chown root:root /var/ftp/containers
+sudo chmod 755 /var/ftp/containers
+
+# Start and enable FTP service
+sudo systemctl start vsftpd
+sudo systemctl enable vsftpd
+
+# Check if FTP service is running
+if sudo systemctl is-active --quiet vsftpd; then
+    print_success "FTP server installed and running"
+else
+    print_error "FTP server failed to start"
+    exit 1
+fi
+
+print_success "FTP server configured successfully"
+print_status "FTP Server: $SERVER_IP:21"
+print_status "Passive ports: 10000-10100"
 
 # Pull common Docker images
 print_status "Pulling common Docker images..."
 docker pull nginx:alpine
-docker pull postgres:alpine
-docker pull redis:alpine
 docker pull node:alpine
+docker pull php:apache
+docker pull python:alpine
+docker pull redis:alpine
 
 print_success "Common Docker images pulled"
 
@@ -244,6 +379,15 @@ sudo systemctl daemon-reload
 sudo systemctl enable not-a-cpanel
 
 print_success "Systemd service created and enabled"
+
+# Make management scripts executable
+print_status "Setting up management scripts..."
+chmod +x manage-postgres.sh
+chmod +x fix-config.sh
+chmod +x fix-python-env.sh
+chmod +x uninstall.sh
+
+print_success "Management scripts ready"
 
 echo ""
 echo "🎉 Setup Complete!"
