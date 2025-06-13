@@ -8,6 +8,14 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
+<!-- Splash Screen Overlay -->
+    <div id="splashScreen">
+        <div class="splash-content">
+            <i class="fab fa-docker fa-3x"></i>
+            <h1>Not a cPanel</h1>
+            <p>Loading Docker Management Panel...</p>
+        </div>
+    </div>
     <!-- Login Screen -->
     <div id="loginScreen" class="login-screen">
         <div class="login-container">
@@ -527,3 +535,18 @@ SELECT * FROM information_schema.tables;"></textarea>
     <script src="script.js"></script>
 </body>
 </html>
+<script>
+        // Hide splash after 2 seconds
+        window.addEventListener('DOMContentLoaded', function() {
+            setTimeout(function() {
+                var splash = document.getElementById('splashScreen');
+                if (splash) {
+                    splash.style.opacity = '0';
+                    splash.style.pointerEvents = 'none';
+                    setTimeout(function() {
+                        splash.style.display = 'none';
+                    }, 500);
+                }
+            }, 2000);
+        });
+    </script>

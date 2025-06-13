@@ -11,6 +11,33 @@ body {
     color: #333;
     line-height: 1.6;
 }
+/* Splash Screen Styles */
+#splashScreen {
+    position: fixed;
+    z-index: 9999;
+    top: 0; left: 0; width: 100vw; height: 100vh;
+    background: #23272e;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    transition: opacity 0.5s;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+#splashScreen .splash-content {
+    text-align: center;
+}
+#splashScreen h1 {
+    margin-top: 1rem;
+    font-size: 2.5rem;
+    letter-spacing: 2px;
+}
+#splashScreen p {
+    margin-top: 0.5rem;
+    font-size: 1.2rem;
+    color: #b0b8c1;
+}
 
 /* Login Screen Styles */
 .login-screen {
