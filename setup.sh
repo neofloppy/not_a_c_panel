@@ -135,6 +135,11 @@ echo ""
 read -s -p "Enter admin password for the control panel (or press Enter for 'docker123!'): " ADMIN_PASSWORD
 echo ""
 ADMIN_PASSWORD=${ADMIN_PASSWORD:-"docker123!"}
+# Get database password
+echo ""
+read -s -p "Enter database password for PostgreSQL (or press Enter for 'notacpanel123'): " DB_PASSWORD
+echo ""
+DB_PASSWORD=${DB_PASSWORD:-"notacpanel123"}
 
 print_success "Configuration collected:"
 print_status "Server IP: $SERVER_IP"
