@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # Not a cPanel - Minimal Bootstrap Installer (POSIX sh compatible)
-# Installs Python, pip, git, clones the repo, and prints next steps.
+# Installs Python, pip, git, clones the repo, and installs requirements.
 
 set -e
 
@@ -96,4 +96,25 @@ echo ""
 print_status "To start the backend server, run:"
 echo "python3 server.py"
 print_status "Then open your browser to the app and complete setup (including Docker/PostgreSQL) from the web interface."
+
+# Prompt to start server and watcher
+echo ""
+printf "Do you want to start the backend server and watcher now? (y/n): "
+read START_NOW
+if [ "$START_NOW" = "y" ] || [ "$START_NOW" = "Y" ]; then
+    print_status "Starting backend server in background..."
+    nohup python3 server.py > server.log 2>&1 &
+    if [ -f watcher.sh ]; then
+        print_status "Starting watcher.sh in background..."
+        chmod +x watcher.sh
+        nohup ./watcher.sh > watcher.log 2>&1 &
+    else
+        print_warning "watcher.sh not found, skipping."
+    fi
+    print_success "Backend server and watcher started. Check server.log and watcher.log for output."
+else
+    print_status "You can start the backend server anytime with: python3 server.py"
+    print_status "And watcher (if needed) with: ./watcher.sh"
+fi
+
 print_success "Bootstrap complete!"
