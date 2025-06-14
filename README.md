@@ -1,18 +1,27 @@
 # Not a cPanel - Docker Container Management
 
-🐳 A modern, web-based control panel for managing Docker containers running Nginx instances on Ubuntu servers.
+🐳 A modern, web-based control panel for managing Docker containers on Ubuntu servers.
 
-![Not a cPanel](https://img.shields.io/badge/Docker-Container%20Management-blue?style=for-the-badge&logo=docker)
-![Authentication](https://img.shields.io/badge/Security-Authentication%20Required-green?style=for-the-badge&logo=shield)
+![Ubuntu](https://img.shields.io/badge/Ubuntu-Only-orange?style=for-the-badge&logo=ubuntu)
+![Docker](https://img.shields.io/badge/Docker-Container%20Management-blue?style=for-the-badge&logo=docker)
+![Security](https://img.shields.io/badge/Security-Authentication%20Required-green?style=for-the-badge&logo=shield)
 ![License](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)
 
-## 🚀 Quick Start
+## 🚀 Ubuntu Installation
 
-### 🔒 Secure Installation (Recommended)
+### 🔒 Method 1: Secure Manual Installation (Recommended)
 ```bash
 # Clone the repository
 git clone https://github.com/neofloppy/not_a_c_panel.git
 cd not_a_c_panel
+
+# Install Python3 and pip if not already installed
+sudo apt update
+sudo apt install -y python3 python3-pip python3-venv
+
+# Create and activate virtual environment
+python3 -m venv venv
+source venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
@@ -21,13 +30,21 @@ pip install -r requirements.txt
 python run_secure.py
 ```
 
-### Option 1: One-line Installation (Less Secure)
+### ⚡ Method 2: Automated Installation
 ```bash
-# Download and run the minimal installer script
-# This will install Python, pip, git, clone the repo, and install requirements
-curl -fsSL https://raw.githubusercontent.com/neofloppy/not_a_c_panel/master/install_everything.sh -o install_everything.sh
+# Clone the repository
+git clone https://github.com/neofloppy/not_a_c_panel.git
+cd not_a_c_panel
+
+# Run the automated installer (handles all dependencies)
 chmod +x install_everything.sh
 ./install_everything.sh
+```
+
+### 🚀 Method 3: One-Line Installation
+```bash
+# Download and run the installer directly
+curl -fsSL https://raw.githubusercontent.com/neofloppy/not_a_c_panel/master/install_everything.sh | bash
 ```
 
 **During installation, you'll be prompted for:**
@@ -40,10 +57,7 @@ chmod +x install_everything.sh
 - **PostgreSQL Password**: Database password (default: postgres)
 - **PostgreSQL Database Name**: Database name (default: notacpanel)
 
-### Option 2: Manual Installation
----
-
-## 🛠️ Troubleshooting
+## 🛠️ Ubuntu Troubleshooting
 
 **Python virtual environment creation fails with `ensurepip is not available`**
 
@@ -51,21 +65,11 @@ If you see an error like:
 ```
 The virtual environment was not created successfully because ensurepip is not available.
 ```
-On Debian/Ubuntu systems, install the venv package:
+On Ubuntu systems, install the venv package:
 ```bash
-sudo apt install python3.12-venv
+sudo apt install python3-venv
 ```
-Replace `python3.12-venv` with your Python version if different. After installing, retry the setup or virtual environment creation.
-```bash
-# Clone the repository
-git clone https://github.com/neofloppy/not_a_c_panel.git
-cd not_a_c_panel
-
-# Run the universal installer
-chmod +x install_everything.sh
-./install_everything.sh
-```
-```
+After installing, retry the setup.
 
 ### Access the Control Panel
 - URL: `http://your-server-ip:5000` (as configured during installation)
@@ -78,12 +82,7 @@ chmod +x install_everything.sh
 - Username: `notacpanel`
 - Password: `[your-chosen-db-password]` (as set during installation)
 
-### FTP Access
-- Host: `your-server-ip:21`
-- Passive Ports: `[your-configured-range]` (default: 10000-10100)
-- Users: Created automatically per container
-
-## Features
+## 🌟 Features
 
 - **Dashboard**: Overview of all Docker containers and system resources
 - **Container Management**: Start, stop, restart, and monitor Docker containers
@@ -95,53 +94,16 @@ chmod +x install_everything.sh
 - **Terminal Access**: Execute commands on the host system or inside containers
 - **Responsive Design**: Works on desktop and mobile devices
 
-## Server Requirements
+## 📋 Ubuntu Requirements
 
-- Ubuntu Server
-- Docker installed and running
-- Python 3.6+ (for the backend server)
-- 10 Docker containers running Nginx (as specified)
+- **Ubuntu Server** (18.04 LTS or newer)
+- **Docker** installed and running
+- **Python 3.6+** (installed during setup)
+- **Internet connection** for package installation
 
-## Installation
+## 🔐 Login Credentials
 
-### 1. Clone or Download the Project
-
-```bash
-git clone <repository-url>
-cd not_a_c_panel
-```
-
-### 2. Install Python Dependencies
-
-```bash
-pip3 install flask flask-cors
-```
-
-### 3. Set Up Docker Containers
-
-The application includes a `docker-compose.yml` file that will create 10 Nginx containers:
-
-```bash
-# Create nginx configuration directories
-mkdir -p nginx-configs/{web-01,web-02,web-03,web-04,web-05,api-01,api-02,lb-01,static-01,proxy-01}
-
-# Start all containers
-docker-compose up -d
-```
-
-### 4. Start the Control Panel Server
-
-```bash
-python3 server.py
-```
-
-The server will start on port 5000. Access the control panel at:
-- Local: `http://localhost:5000`
-- Remote: `http://4.221.197.153:5000`
-
-### 5. Login Credentials
-
-The control panel is protected by authentication. Credentials are configured during setup:
+The control panel is protected by authentication. Credentials are configured during installation:
 
 - **Username**: Set during secure installation
 - **Password**: Set during secure installation (or auto-generated)
