@@ -28,6 +28,21 @@ chmod +x install_everything.sh
 - **PostgreSQL Database Name**: Database name (default: notacpanel)
 
 ### Option 2: Manual Installation
+---
+
+## 🛠️ Troubleshooting
+
+**Python virtual environment creation fails with `ensurepip is not available`**
+
+If you see an error like:
+```
+The virtual environment was not created successfully because ensurepip is not available.
+```
+On Debian/Ubuntu systems, install the venv package:
+```bash
+sudo apt install python3.12-venv
+```
+Replace `python3.12-venv` with your Python version if different. After installing, retry the setup or virtual environment creation.
 ```bash
 # Clone the repository
 git clone https://github.com/neofloppy/not_a_c_panel.git
