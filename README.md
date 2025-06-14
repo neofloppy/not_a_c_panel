@@ -10,9 +10,11 @@
 
 ### Option 1: One-line Installation (Recommended)
 ```bash
-# Install directly from GitHub using curl
+# Download and run the installer script
 # This will prompt for all configuration settings
-curl -fsSL https://raw.githubusercontent.com/neofloppy/not_a_c_panel/master/install_everything.sh | bash
+curl -fsSL https://raw.githubusercontent.com/neofloppy/not_a_c_panel/master/install_everything.sh -o install_everything.sh
+chmod +x install_everything.sh
+./install_everything.sh
 ```
 
 **During installation, you'll be prompted for:**
