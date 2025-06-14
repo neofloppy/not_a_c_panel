@@ -12,16 +12,18 @@
 ```bash
 # Install directly from GitHub using curl
 # This will prompt for all configuration settings
-curl -fsSL https://raw.githubusercontent.com/neofloppy/not_a_c_panel/master/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/neofloppy/not_a_c_panel/master/install_everything.sh | bash
 ```
 
 **During installation, you'll be prompted for:**
-- **Server IP Address**: Your server's public IP address (required)
-- **Username**: Your system username (required)
-- **Admin Password**: Password for the control panel (required, min 6 chars)
-- **Database Password**: PostgreSQL database password (required, min 6 chars)
-- **FTP Port Range**: Passive FTP port range (default: 10000-10100)
-- **Admin Email**: Optional email for notifications
+- **Server IP Address**: Your server's public IP address
+- **Admin Username**: Username for the control panel
+- **Admin Password**: Password for the control panel
+- **PostgreSQL Host**: Database host (default: localhost)
+- **PostgreSQL Port**: Database port (default: 5432)
+- **PostgreSQL User**: Database user (default: postgres)
+- **PostgreSQL Password**: Database password (default: postgres)
+- **PostgreSQL Database Name**: Database name (default: notacpanel)
 
 ### Option 2: Manual Installation
 ```bash
@@ -29,15 +31,10 @@ curl -fsSL https://raw.githubusercontent.com/neofloppy/not_a_c_panel/master/inst
 git clone https://github.com/neofloppy/not_a_c_panel.git
 cd not_a_c_panel
 
-# Run setup script
-chmod +x setup.sh
-./setup.sh
-
-# Or install manually:
-pip3 install -r requirements.txt
-mkdir -p nginx-configs/{web-01,web-02,web-03,web-04,web-05,api-01,api-02,lb-01,static-01,proxy-01}
-docker-compose up -d
-python3 server.py
+# Run the universal installer
+chmod +x install_everything.sh
+./install_everything.sh
+```
 ```
 
 ### Access the Control Panel
