@@ -39,6 +39,25 @@ if ! command -v python3 >/dev/null 2>&1; then
         exit 1
     fi
 fi
+# Check if python3-venv is available (fixes ensurepip error)
+if ! python3 -m venv --help >/dev/null 2>&1; then
+    print_status "python3-venv is not available. Installing..."
+    if command -v apt-get >/dev/null 2>&1; then
+        sudo apt-get update
+        sudo apt-get install -y python3-venv
+    elif command -v yum >/dev/null 2>&1; then
+        sudo yum install -y python3-venv
+    elif command -v dnf >/dev/null 2>&1; then
+        sudo dnf install -y python3-venv
+    elif command -v pacman >/dev/null 2>&1; then
+        sudo pacman -Sy --noconfirm python-venv
+    elif command -v zypper >/dev/null 2>&1; then
+        sudo zypper install -y python3-venv
+    else
+        print_error "Unsupported package manager. Please install python3-venv manually."
+        exit 1
+    fi
+fi
 
 if ! command -v pip3 >/dev/null 2>&1; then
     print_status "pip3 not found. Installing..."
