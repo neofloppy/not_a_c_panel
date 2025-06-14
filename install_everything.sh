@@ -9,13 +9,11 @@ echo "=============================================="
 echo "  Not a cPanel - Universal Installer"
 echo "=============================================="
 
-# Simple status functions (no colors for POSIX sh)
 print_status() { echo "[INFO] $1"; }
 print_success() { echo "[SUCCESS] $1"; }
 print_warning() { echo "[WARNING] $1"; }
 print_error() { echo "[ERROR] $1"; }
 
-# Prompt for configuration (all required, no defaults or auto-detect)
 echo ""
 print_status "Please enter the following configuration details:"
 
@@ -86,7 +84,6 @@ done
 
 print_success "Configuration collected."
 
-# Install system dependencies
 print_status "Updating package lists and installing dependencies..."
 if command -v apt-get >/dev/null 2>&1; then
     sudo apt-get update
@@ -106,20 +103,17 @@ fi
 
 print_success "System dependencies installed."
 
-# Start Docker if not running
 if ! pgrep -x "dockerd" >/dev/null 2>&1; then
     print_status "Starting Docker service..."
     sudo systemctl start docker || sudo service docker start
 fi
 
-# Add user to docker group if not already
 if ! groups "$USER" | grep -q '\bdocker\b'; then
     print_status "Adding $USER to docker group..."
     sudo usermod -aG docker "$USER"
     print_warning "You may need to log out and log back in for docker group changes to take effect."
 fi
 
-# Set up Python virtual environment
 print_status "Setting up Python virtual environment..."
 python3 -m venv venv
 . venv/bin/activate
@@ -130,7 +124,6 @@ pip install -r requirements.txt
 
 print_success "Python environment ready."
 
-# Write configuration to .env file
 cat > .env <<EOF
 SERVER_IP=$SERVER_IP
 ADMIN_USER=$ADMIN_USER
@@ -144,7 +137,6 @@ EOF
 
 print_success "Configuration saved to .env"
 
-# Provide instructions to start the backend
 echo ""
 print_status "To start the backend server, run:"
 echo "source venv/bin/activate && python server.py"
