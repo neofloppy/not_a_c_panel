@@ -13,17 +13,47 @@ import time
 import hashlib
 import secrets
 import psycopg2
+import re
+import logging
 from datetime import datetime, timedelta
 from flask import Flask, render_template, jsonify, request, send_from_directory, session
 from flask_cors import CORS
 from functools import wraps
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+import configparser
+from typing import Dict, List, Optional, Any
 
 app = Flask(__name__)
-CORS(app)
 
-# Configuration - These will be set during installation
+# Configure CORS with restrictions
+CORS(app, origins=['http://localhost:5000', 'https://localhost:5000'], 
+     supports_credentials=True, 
+     allow_headers=['Content-Type', 'Authorization'])
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('not_a_cpanel.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# Rate limiting
+limiter = Limiter(
+    app,
+    key_func=get_remote_address,
+    default_limits=["100 per hour"]
+)
+
+# Configuration - Load from secure config file
 SERVER_IP = "localhost"  # Default fallback
 USERNAME = "user"        # Default fallback
+ADMIN_PASSWORD_HASH = None  # Will be loaded from config
 
 # PostgreSQL Configuration
 DB_CONFIG = {
@@ -34,39 +64,173 @@ DB_CONFIG = {
     'port': 5432
 }
 
-# Try to load configuration from config file
-CONFIG_FILE = "config.py"
-if os.path.exists(CONFIG_FILE):
-    try:
-        config_globals = {}
-        exec(open(CONFIG_FILE).read(), config_globals)
-        
-        # Update variables if they exist in config
-        if 'SERVER_IP' in config_globals:
-            SERVER_IP = config_globals['SERVER_IP']
-        if 'USERNAME' in config_globals:
-            USERNAME = config_globals['USERNAME']
-        if 'ADMIN_PASSWORD' in config_globals:
-            ADMIN_PASSWORD = config_globals['ADMIN_PASSWORD']
+def load_secure_config():
+    """Load configuration from secure INI file"""
+    global SERVER_IP, USERNAME, ADMIN_PASSWORD_HASH, DB_CONFIG
+    
+    config_file = "config.ini"
+    if os.path.exists(config_file):
+        try:
+            config = configparser.ConfigParser()
+            config.read(config_file)
             
-    except Exception as e:
-        print(f"Warning: Could not load config file: {e}")
-        print(f"Using default values: SERVER_IP={SERVER_IP}, USERNAME={USERNAME}")
+            # Server configuration
+            if 'server' in config:
+                SERVER_IP = config.get('server', 'ip', fallback=SERVER_IP)
+                USERNAME = config.get('server', 'username', fallback=USERNAME)
+                
+            # Admin credentials
+            if 'admin' in config:
+                ADMIN_PASSWORD_HASH = config.get('admin', 'password_hash', fallback=None)
+                
+            # Database configuration
+            if 'database' in config:
+                DB_CONFIG.update({
+                    'host': config.get('database', 'host', fallback=DB_CONFIG['host']),
+                    'database': config.get('database', 'database', fallback=DB_CONFIG['database']),
+                    'user': config.get('database', 'user', fallback=DB_CONFIG['user']),
+                    'password': config.get('database', 'password', fallback=DB_CONFIG['password']),
+                    'port': config.getint('database', 'port', fallback=DB_CONFIG['port'])
+                })
+                
+            logger.info(f"Configuration loaded from {config_file}")
+        except Exception as e:
+            logger.error(f"Error loading config file: {e}")
+            logger.info(f"Using default values: SERVER_IP={SERVER_IP}, USERNAME={USERNAME}")
+    else:
+        # Create default config file
+        create_default_config(config_file)
+
+def create_default_config(config_file: str):
+    """Create a default secure configuration file"""
+    config = configparser.ConfigParser()
+    
+    config['server'] = {
+        'ip': SERVER_IP,
+        'username': USERNAME
+    }
+    
+    # Generate secure password hash
+    default_password = secrets.token_urlsafe(16)
+    password_hash = generate_password_hash(default_password)
+    
+    config['admin'] = {
+        'password_hash': password_hash
+    }
+    
+    config['database'] = {
+        'host': DB_CONFIG['host'],
+        'database': DB_CONFIG['database'],
+        'user': DB_CONFIG['user'],
+        'password': DB_CONFIG['password'],
+        'port': str(DB_CONFIG['port'])
+    }
+    
+    with open(config_file, 'w') as f:
+        config.write(f)
+    
+    logger.warning(f"Created default config file: {config_file}")
+    logger.warning(f"Default admin password: {default_password}")
+    logger.warning("Please change the default password and secure the config file!")
+    
+    global ADMIN_PASSWORD_HASH
+    ADMIN_PASSWORD_HASH = password_hash
 
 # Authentication configuration
-app.secret_key = secrets.token_hex(32)  # Generate a secure secret key
+app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 ADMIN_USERNAME = "admin"
-
-# Default password, will be overridden by config.py if it exists
-if 'ADMIN_PASSWORD' not in locals():
-    ADMIN_PASSWORD = "docker123!"
-
-# Generate password hash
-ADMIN_PASSWORD_HASH = hashlib.sha256(ADMIN_PASSWORD.encode()).hexdigest()
 SESSION_TIMEOUT = timedelta(hours=4)
 
-# Store active sessions (in production, use Redis or database)
-active_sessions = {}
+# Store active sessions with additional security info
+active_sessions: Dict[str, Dict[str, Any]] = {}
+failed_login_attempts: Dict[str, Dict[str, Any]] = {}
+
+# Security constants
+MAX_LOGIN_ATTEMPTS = 5
+LOCKOUT_DURATION = timedelta(minutes=15)
+
+# Input validation patterns
+VALID_CONTAINER_NAME = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9_.-]*$')
+VALID_IMAGE_NAME = re.compile(r'^[a-z0-9]+([._-][a-z0-9]+)*(/[a-z0-9]+([._-][a-z0-9]+)*)*(:[\w.-]+)?$')
+VALID_PORT = re.compile(r'^[1-9][0-9]{0,4}$')
+VALID_DATABASE_NAME = re.compile(r'^[a-zA-Z][a-zA-Z0-9_]*$')
+
+# Load configuration
+load_secure_config()
+
+def validate_input(value: str, pattern: re.Pattern, max_length: int = 100) -> bool:
+    """Validate input against regex pattern and length"""
+    if not value or len(value) > max_length:
+        return False
+    return bool(pattern.match(value))
+
+def sanitize_for_shell(value: str) -> str:
+    """Sanitize input for shell command execution"""
+    # Only allow alphanumeric, dash, underscore, and dot
+    return re.sub(r'[^a-zA-Z0-9._-]', '', value)
+
+def check_account_lockout(ip_address: str) -> bool:
+    """Check if IP is locked out due to failed login attempts"""
+    if ip_address in failed_login_attempts:
+        attempt_data = failed_login_attempts[ip_address]
+        if attempt_data['count'] >= MAX_LOGIN_ATTEMPTS:
+            if datetime.now() - attempt_data['last_attempt'] < LOCKOUT_DURATION:
+                return True
+            else:
+                # Reset attempts after lockout period
+                del failed_login_attempts[ip_address]
+    return False
+
+def record_failed_login(ip_address: str):
+    """Record a failed login attempt"""
+    if ip_address not in failed_login_attempts:
+        failed_login_attempts[ip_address] = {'count': 0, 'last_attempt': datetime.now()}
+    
+    failed_login_attempts[ip_address]['count'] += 1
+    failed_login_attempts[ip_address]['last_attempt'] = datetime.now()
+    
+    logger.warning(f"Failed login attempt from {ip_address}. Count: {failed_login_attempts[ip_address]['count']}")
+
+def secure_run_command(command_list: List[str], timeout: int = 30) -> Dict[str, Any]:
+    """Execute command with enhanced security - no shell=True"""
+    try:
+        # Validate command
+        if not command_list or not isinstance(command_list, list):
+            raise ValueError("Invalid command format")
+        
+        # Sanitize command parts
+        sanitized_command = [sanitize_for_shell(part) for part in command_list]
+        
+        result = subprocess.run(
+            sanitized_command,
+            shell=False,  # Never use shell=True
+            capture_output=True,
+            text=True,
+            timeout=timeout
+        )
+        
+        return {
+            'success': result.returncode == 0,
+            'stdout': result.stdout.strip(),
+            'stderr': result.stderr.strip(),
+            'returncode': result.returncode
+        }
+    except subprocess.TimeoutExpired:
+        logger.error(f"Command timeout: {command_list}")
+        return {
+            'success': False,
+            'stdout': '',
+            'stderr': 'Command timed out',
+            'returncode': -1
+        }
+    except Exception as e:
+        logger.error(f"Command execution error: {e}")
+        return {
+            'success': False,
+            'stdout': '',
+            'stderr': f'Execution error: {str(e)}',
+            'returncode': -1
+        }
 
 # Database connection and initialization
 def get_db_connection():
@@ -545,36 +709,74 @@ def serve_static(filename):
     return send_from_directory('.', filename)
 
 @app.route('/api/login', methods=['POST'])
+@limiter.limit("5 per minute")
 def login():
-    """Handle user login"""
+    """Handle user login with security measures"""
+    ip_address = request.remote_addr
+    
+    # Check for account lockout
+    if check_account_lockout(ip_address):
+        logger.warning(f"Login attempt from locked IP: {ip_address}")
+        return jsonify({
+            'success': False, 
+            'error': 'Account temporarily locked due to too many failed attempts. Please try again later.'
+        }), 429
+    
     data = request.get_json()
-    username = data.get('username')
-    password = data.get('password')
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+    username = data.get('username', '').strip()
+    password = data.get('password', '')
     
     if not username or not password:
         return jsonify({'success': False, 'error': 'Username and password required'}), 400
     
-    # Check credentials
-    password_hash = hashlib.sha256(password.encode()).hexdigest()
+    # Validate input lengths
+    if len(username) > 50 or len(password) > 200:
+        return jsonify({'success': False, 'error': 'Invalid input length'}), 400
     
-    if username == ADMIN_USERNAME and password_hash == ADMIN_PASSWORD_HASH:
-        # Generate session
+    # Check if we have a valid password hash configured
+    if not ADMIN_PASSWORD_HASH:
+        logger.error("No admin password hash configured")
+        return jsonify({'success': False, 'error': 'Server configuration error'}), 500
+    
+    # Verify credentials using secure password hashing
+    if username == ADMIN_USERNAME and check_password_hash(ADMIN_PASSWORD_HASH, password):
+        # Clear failed attempts for this IP
+        if ip_address in failed_login_attempts:
+            del failed_login_attempts[ip_address]
+        
+        # Generate secure session
         session_token = generate_session_token()
         session['user_id'] = session_token
+        session['csrf_token'] = secrets.token_urlsafe(32)
         
-        # Store session info
+        # Store session info with security metadata
         active_sessions[session_token] = {
             'username': username,
             'login_time': datetime.now(),
-            'last_activity': datetime.now()
+            'last_activity': datetime.now(),
+            'ip_address': ip_address,
+            'user_agent': request.headers.get('User-Agent', 'Unknown')[:200]
         }
+        
+        logger.info(f"Successful login for user {username} from {ip_address}")
         
         return jsonify({
             'success': True,
             'message': 'Login successful',
-            'user': username
+            'user': username,
+            'csrf_token': session['csrf_token']
         })
     else:
+        # Record failed login attempt
+        record_failed_login(ip_address)
+        logger.warning(f"Failed login attempt for user {username} from {ip_address}")
+        
+        # Add delay to prevent timing attacks
+        time.sleep(1)
+        
         return jsonify({'success': False, 'error': 'Invalid credentials'}), 401
 
 @app.route('/api/logout', methods=['POST'])

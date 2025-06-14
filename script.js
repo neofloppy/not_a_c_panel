@@ -6,11 +6,7 @@ let currentSection = 'dashboard';
 let authToken = null;
 let isAuthenticated = false;
 
-// Authentication credentials (in production, these should be stored securely)
-const ADMIN_CREDENTIALS = {
-    username: 'admin',
-    password: 'docker123!'
-};
+// Authentication is handled server-side - no hardcoded credentials
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
@@ -58,7 +54,7 @@ function showMainApp() {
     loadContainers();
 }
 
-function handleLogin(event) {
+async function handleLogin(event) {
     event.preventDefault();
     
     const username = document.getElementById('username').value.trim();
@@ -69,22 +65,40 @@ function handleLogin(event) {
     // Clear previous errors
     loginError.style.display = 'none';
     
+    // Validate input
+    if (!username || !password) {
+        loginError.textContent = 'Please enter both username and password';
+        loginError.style.display = 'block';
+        return;
+    }
+    
     // Add loading state
     loginBtn.classList.add('loading');
     loginBtn.disabled = true;
+    loginBtn.textContent = 'Signing In...';
     
-    // Simulate authentication delay
-    setTimeout(() => {
-        if (username === ADMIN_CREDENTIALS.username && password === ADMIN_CREDENTIALS.password) {
+    try {
+        // Make API call to server for authentication
+        const response = await fetch('/api/login', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ username, password })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
             // Successful login
             isAuthenticated = true;
-            authToken = generateAuthToken();
+            authToken = result.csrf_token;
             
             // Store authentication in session storage
             const authData = {
                 authenticated: true,
                 token: authToken,
-                username: username,
+                username: result.user,
                 timestamp: Date.now()
             };
             sessionStorage.setItem('not_a_cpanel_auth', JSON.stringify(authData));
@@ -98,7 +112,7 @@ function handleLogin(event) {
             
         } else {
             // Failed login
-            loginError.textContent = 'Invalid username or password. Please try again.';
+            loginError.textContent = result.error || 'Invalid credentials. Please try again.';
             loginError.style.display = 'block';
             
             // Shake animation for error
@@ -113,10 +127,16 @@ function handleLogin(event) {
             document.getElementById('password').focus();
         }
         
-        // Remove loading state
-        loginBtn.classList.remove('loading');
-        loginBtn.disabled = false;
-    }, 1000); // Simulate network delay
+    } catch (error) {
+        console.error('Login error:', error);
+        loginError.textContent = 'Connection error. Please try again.';
+        loginError.style.display = 'block';
+    }
+    
+    // Remove loading state
+    loginBtn.classList.remove('loading');
+    loginBtn.disabled = false;
+    loginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Login';
 }
 
 function generateAuthToken() {

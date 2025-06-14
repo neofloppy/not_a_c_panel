@@ -8,7 +8,20 @@
 
 ## 🚀 Quick Start
 
-### Option 1: One-line Installation (Recommended)
+### 🔒 Secure Installation (Recommended)
+```bash
+# Clone the repository
+git clone https://github.com/neofloppy/not_a_c_panel.git
+cd not_a_c_panel
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run secure startup (will prompt for configuration)
+python run_secure.py
+```
+
+### Option 1: One-line Installation (Less Secure)
 ```bash
 # Download and run the minimal installer script
 # This will install Python, pip, git, clone the repo, and install requirements
@@ -128,12 +141,12 @@ The server will start on port 5000. Access the control panel at:
 
 ### 5. Login Credentials
 
-The control panel is protected by authentication. Use these credentials to log in:
+The control panel is protected by authentication. Credentials are configured during setup:
 
-- **Username**: `admin`
-- **Password**: `docker123!`
+- **Username**: Set during secure installation
+- **Password**: Set during secure installation (or auto-generated)
 
-> **Security Note**: In production, change these default credentials by modifying the `ADMIN_USERNAME` and `ADMIN_PASSWORD_HASH` variables in `server.py`.
+> **Security Note**: Use the secure installation method (`run_secure.py`) to set strong credentials. Never use default passwords in production.
 
 ## Usage
 
