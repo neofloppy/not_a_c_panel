@@ -21,38 +21,55 @@ print_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 print_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
 print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
-# Prompt for configuration
+# Prompt for configuration (all required, no defaults or auto-detect)
 echo ""
 print_status "Please enter the following configuration details:"
 
-read -p "Server IP address [default: auto-detect]: " SERVER_IP
-if [ -z "$SERVER_IP" ]; then
-    SERVER_IP=$(curl -s ifconfig.me 2>/dev/null || curl -s ipinfo.io/ip 2>/dev/null || echo "localhost")
-    print_status "Auto-detected IP: $SERVER_IP"
-fi
+while [ -z "$SERVER_IP" ]; do
+    read -p "Server IP address: " SERVER_IP
+    if [ -z "$SERVER_IP" ]; then print_error "Server IP is required."; fi
+done
 
-read -p "Admin username [default: admin]: " ADMIN_USER
-ADMIN_USER=${ADMIN_USER:-admin}
+while [ -z "$ADMIN_USER" ]; do
+    read -p "Admin username: " ADMIN_USER
+    if [ -z "$ADMIN_USER" ]; then print_error "Admin username is required."; fi
+done
 
-read -s -p "Admin password [default: docker123!]: " ADMIN_PASS
-echo ""
-ADMIN_PASS=${ADMIN_PASS:-docker123!}
-
-echo ""
-print_status "PostgreSQL Database Settings:"
-read -p "PostgreSQL host [default: localhost]: " PG_HOST
-PG_HOST=${PG_HOST:-localhost}
-read -p "PostgreSQL port [default: 5432]: " PG_PORT
-PG_PORT=${PG_PORT:-5432}
-read -p "PostgreSQL user [default: postgres]: " PG_USER
-PG_USER=${PG_USER:-postgres}
-read -s -p "PostgreSQL password [default: postgres]: " PG_PASS
-echo ""
-PG_PASS=${PG_PASS:-postgres}
-read -p "PostgreSQL database name [default: notacpanel]: " PG_DB
-PG_DB=${PG_DB:-notacpanel}
+while [ -z "$ADMIN_PASS" ]; do
+    read -s -p "Admin password: " ADMIN_PASS
+    echo ""
+    if [ -z "$ADMIN_PASS" ]; then print_error "Admin password is required."; fi
+done
 
 echo ""
+print_status "PostgreSQL Database Settings (all required):"
+
+while [ -z "$PG_HOST" ]; do
+    read -p "PostgreSQL host: " PG_HOST
+    if [ -z "$PG_HOST" ]; then print_error "PostgreSQL host is required."; fi
+done
+
+while [ -z "$PG_PORT" ]; do
+    read -p "PostgreSQL port: " PG_PORT
+    if [ -z "$PG_PORT" ]; then print_error "PostgreSQL port is required."; fi
+done
+
+while [ -z "$PG_USER" ]; do
+    read -p "PostgreSQL user: " PG_USER
+    if [ -z "$PG_USER" ]; then print_error "PostgreSQL user is required."; fi
+done
+
+while [ -z "$PG_PASS" ]; do
+    read -s -p "PostgreSQL password: " PG_PASS
+    echo ""
+    if [ -z "$PG_PASS" ]; then print_error "PostgreSQL password is required."; fi
+done
+
+while [ -z "$PG_DB" ]; do
+    read -p "PostgreSQL database name: " PG_DB
+    if [ -z "$PG_DB" ]; then print_error "PostgreSQL database name is required."; fi
+done
+
 print_success "Configuration collected."
 
 # Install system dependencies
@@ -91,7 +108,8 @@ fi
 # Set up Python virtual environment
 print_status "Setting up Python virtual environment..."
 python3 -m venv venv
-source venv/bin/activate
+# shellcheck disable=SC1091
+. venv/bin/activate
 
 print_status "Installing Python dependencies..."
 pip install --upgrade pip
