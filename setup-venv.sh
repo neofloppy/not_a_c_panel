@@ -42,6 +42,20 @@ fi
 print_status "Installing required system packages..."
 sudo apt-get update
 sudo apt-get install -y python3-full python3-venv curl git
+# Check if Docker is installed
+if ! command -v docker &> /dev/null; then
+    print_error "Docker is not installed. Please install Docker first."
+    print_status "You can install Docker using: curl -fsSL https://get.docker.com -o get-docker.sh && sh get-docker.sh"
+    exit 1
+fi
+
+# Check if Docker Compose (v1 or v2) is installed
+if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
+    print_error "Docker Compose is not installed. Please install Docker Compose (v2 or v1) first."
+    print_status "You can install Docker Compose v2 (recommended) using: sudo apt-get install docker-compose-plugin"
+    print_status "Or install Docker Compose v1 using: sudo curl -L \"https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)\" -o /usr/local/bin/docker-compose && sudo chmod +x /usr/local/bin/docker-compose"
+    exit 1
+fi
 
 # Create virtual environment
 print_status "Creating Python virtual environment..."

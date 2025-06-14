@@ -45,10 +45,11 @@ if ! command -v docker &> /dev/null; then
     exit 1
 fi
 
-# Check if Docker Compose is installed
-if ! command -v docker-compose &> /dev/null; then
-    print_error "Docker Compose is not installed. Please install Docker Compose first."
-    print_status "You can install Docker Compose using: sudo curl -L \"https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)\" -o /usr/local/bin/docker-compose && sudo chmod +x /usr/local/bin/docker-compose"
+# Check if Docker Compose (v1 or v2) is installed
+if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
+    print_error "Docker Compose is not installed. Please install Docker Compose (v2 or v1) first."
+    print_status "You can install Docker Compose v2 (recommended) using: sudo apt-get install docker-compose-plugin"
+    print_status "Or install Docker Compose v1 using: sudo curl -L \"https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)\" -o /usr/local/bin/docker-compose && sudo chmod +x /usr/local/bin/docker-compose"
     exit 1
 fi
 
