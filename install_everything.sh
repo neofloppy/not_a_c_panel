@@ -5,6 +5,25 @@
 
 set -e
 
+REPO_URL="https://github.com/neofloppy/not_a_c_panel.git"
+REPO_NAME="not_a_c_panel"
+
+# If requirements.txt is not present, clone the repo and re-run the script from there
+if [ ! -f requirements.txt ]; then
+    echo "[INFO] requirements.txt not found. Cloning repository..."
+    # Use mktemp for a temp dir, fallback to /tmp if not available
+    if command -v mktemp >/dev/null 2>&1; then
+        TMPDIR=$(mktemp -d)
+    else
+        TMPDIR="/tmp/${REPO_NAME}_$$"
+        mkdir -p "$TMPDIR"
+    fi
+    git clone "$REPO_URL" "$TMPDIR"
+    cd "$TMPDIR"
+    chmod +x install_everything.sh
+    exec ./install_everything.sh
+fi
+
 echo "=============================================="
 echo "  Not a cPanel - Universal Installer"
 echo "=============================================="
