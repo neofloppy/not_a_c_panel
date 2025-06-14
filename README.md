@@ -10,8 +10,8 @@
 
 ### Option 1: One-line Installation (Recommended)
 ```bash
-# Download and run the installer script
-# This will prompt for all configuration settings
+# Download and run the minimal installer script
+# This will install Python, pip, git, clone the repo, and install requirements
 curl -fsSL https://raw.githubusercontent.com/neofloppy/not_a_c_panel/master/install_everything.sh -o install_everything.sh
 chmod +x install_everything.sh
 ./install_everything.sh
