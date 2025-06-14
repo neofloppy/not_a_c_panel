@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# Ensure the script is running with bash
+if [ -z "$BASH_VERSION" ]; then
+    echo "This script requires bash. Re-running with bash..."
+    exec bash "$0" "$@"
+fi
+
 # Not a cPanel - Universal Installer
 # This script installs all dependencies, sets up the environment, and configures the app.
 
@@ -25,17 +31,20 @@ print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 echo ""
 print_status "Please enter the following configuration details:"
 
-while [ -z "$SERVER_IP" ]; do
+while [ -z "$SERVER_IP" ]
+do
     read -p "Server IP address: " SERVER_IP
     if [ -z "$SERVER_IP" ]; then print_error "Server IP is required."; fi
 done
 
-while [ -z "$ADMIN_USER" ]; do
+while [ -z "$ADMIN_USER" ]
+do
     read -p "Admin username: " ADMIN_USER
     if [ -z "$ADMIN_USER" ]; then print_error "Admin username is required."; fi
 done
 
-while [ -z "$ADMIN_PASS" ]; do
+while [ -z "$ADMIN_PASS" ]
+do
     read -s -p "Admin password: " ADMIN_PASS
     echo ""
     if [ -z "$ADMIN_PASS" ]; then print_error "Admin password is required."; fi
@@ -44,28 +53,33 @@ done
 echo ""
 print_status "PostgreSQL Database Settings (all required):"
 
-while [ -z "$PG_HOST" ]; do
+while [ -z "$PG_HOST" ]
+do
     read -p "PostgreSQL host: " PG_HOST
     if [ -z "$PG_HOST" ]; then print_error "PostgreSQL host is required."; fi
 done
 
-while [ -z "$PG_PORT" ]; do
+while [ -z "$PG_PORT" ]
+do
     read -p "PostgreSQL port: " PG_PORT
     if [ -z "$PG_PORT" ]; then print_error "PostgreSQL port is required."; fi
 done
 
-while [ -z "$PG_USER" ]; do
+while [ -z "$PG_USER" ]
+do
     read -p "PostgreSQL user: " PG_USER
     if [ -z "$PG_USER" ]; then print_error "PostgreSQL user is required."; fi
 done
 
-while [ -z "$PG_PASS" ]; do
+while [ -z "$PG_PASS" ]
+do
     read -s -p "PostgreSQL password: " PG_PASS
     echo ""
     if [ -z "$PG_PASS" ]; then print_error "PostgreSQL password is required."; fi
 done
 
-while [ -z "$PG_DB" ]; do
+while [ -z "$PG_DB" ]
+do
     read -p "PostgreSQL database name: " PG_DB
     if [ -z "$PG_DB" ]; then print_error "PostgreSQL database name is required."; fi
 done
