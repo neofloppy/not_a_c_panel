@@ -179,6 +179,35 @@ function setupEventListeners() {
         const modal = document.getElementById('containerModal');
         if (event.target === modal) {
             closeModal();
+// Docker Install Button
+    const installDockerBtn = document.getElementById('installDockerBtn');
+    if (installDockerBtn) {
+        installDockerBtn.addEventListener('click', installDocker);
+    }
+}
+
+// Function to call backend and install Docker
+function installDocker() {
+    const statusDiv = document.getElementById('dockerInstallStatus');
+    statusDiv.textContent = "Installing Docker...";
+    fetch('/api/docker/install', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            statusDiv.textContent = "✅ " + data.message;
+        } else {
+            statusDiv.textContent = "❌ " + data.message;
+        }
+    })
+    .catch(error => {
+        statusDiv.textContent = "❌ Error: " + error;
+    });
+}
         }
     });
     

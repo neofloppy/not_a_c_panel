@@ -118,6 +118,43 @@ def init_database():
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS system_logs (
                 id SERIAL PRIMARY KEY,
+# --- Docker Installation Logic ---
+
+def is_docker_installed():
+    try:
+        result = subprocess.run(["docker", "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return result.returncode == 0
+    except Exception:
+        return False
+
+def install_docker():
+    # Only supports apt-based systems for now
+    if not os.geteuid() == 0:
+        return {"success": False, "message": "Root privileges required to install Docker. Please run the backend as root or with sudo."}
+    if os.path.exists("/etc/debian_version"):
+        try:
+            cmds = [
+                "apt-get update",
+                "apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release",
+                "curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg",
+                "echo \"deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable\" > /etc/apt/sources.list.d/docker.list",
+                "apt-get update",
+                "apt-get install -y docker-ce docker-ce-cli containerd.io"
+            ]
+            for cmd in cmds:
+                subprocess.check_call(cmd, shell=True)
+            return {"success": True, "message": "Docker installed successfully."}
+        except Exception as e:
+            return {"success": False, "message": f"Failed to install Docker: {e}"}
+    else:
+        return {"success": False, "message": "Automatic Docker installation is only supported on Debian/Ubuntu systems. Please install Docker manually."}
+
+@app.route('/api/docker/install', methods=['POST'])
+def api_install_docker():
+    if is_docker_installed():
+        return jsonify({"success": True, "message": "Docker is already installed."})
+    result = install_docker()
+    return jsonify(result)
                 level VARCHAR(20) NOT NULL,
                 message TEXT NOT NULL,
                 details JSONB,
