@@ -297,16 +297,27 @@ def install_docker():
         return {"success": False, "message": "Root privileges required to install Docker. Please run the backend as root or with sudo."}
     if os.path.exists("/etc/debian_version"):
         try:
-            cmds = [
-                "apt-get update",
-                "apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release",
-                "curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg",
-                "echo \"deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable\" > /etc/apt/sources.list.d/docker.list",
-                "apt-get update",
-                "apt-get install -y docker-ce docker-ce-cli containerd.io"
+            # Use secure command execution without shell=True
+            commands = [
+                ["apt-get", "update"],
+                ["apt-get", "install", "-y", "apt-transport-https", "ca-certificates", "curl", "gnupg", "lsb-release"],
+                ["curl", "-fsSL", "https://download.docker.com/linux/ubuntu/gpg", "-o", "/tmp/docker.gpg"],
+                ["gpg", "--dearmor", "-o", "/usr/share/keyrings/docker-archive-keyring.gpg", "/tmp/docker.gpg"],
+                ["apt-get", "update"],
+                ["apt-get", "install", "-y", "docker-ce", "docker-ce-cli", "containerd.io"]
             ]
-            for cmd in cmds:
-                subprocess.check_call(cmd, shell=True)
+            
+            for cmd in commands:
+                result = secure_run_command(cmd, timeout=120)
+                if not result['success']:
+                    return {"success": False, "message": f"Failed to execute: {' '.join(cmd)}", "details": result}
+            
+            # Clean up temporary file
+            try:
+                os.remove("/tmp/docker.gpg")
+            except:
+                pass
+                
             return {"success": True, "message": "Docker installed successfully."}
         except Exception as e:
             return {"success": False, "message": f"Failed to install Docker: {e}"}
@@ -371,41 +382,20 @@ class DockerManager:
         self.containers = []
         self.refresh_containers()
     
-    def run_command(self, command, shell=True):
-        """Execute a shell command and return the result"""
-        try:
-            if shell:
-                result = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=30)
-            else:
-                result = subprocess.run(command, capture_output=True, text=True, timeout=30)
-            
-            return {
-                'success': result.returncode == 0,
-                'stdout': result.stdout,
-                'stderr': result.stderr,
-                'returncode': result.returncode
-            }
-        except subprocess.TimeoutExpired:
-            return {
-                'success': False,
-                'stdout': '',
-                'stderr': 'Command timed out',
-                'returncode': -1
-            }
-        except Exception as e:
-            return {
-                'success': False,
-                'stdout': '',
-                'stderr': str(e),
-                'returncode': -1
-            }
+    def run_command(self, command_list):
+        """Execute a command securely without shell=True"""
+        if isinstance(command_list, str):
+            # Convert string command to list for security
+            command_list = command_list.split()
+        
+        return secure_run_command(command_list)
     
     def refresh_containers(self):
         """Refresh the list of Docker containers"""
         self.containers = []
         
         # Get all containers (running and stopped)
-        result = self.run_command("docker ps -a --format json")
+        result = self.run_command(["docker", "ps", "-a", "--format", "json"])
         
         if result['success'] and result['stdout']:
             for line in result['stdout'].split('\n'):
@@ -540,7 +530,7 @@ class DockerManager:
         cmd_parts.append(image)
         
         # Execute command
-        result = self.run_command(' '.join(cmd_parts))
+        result = self.run_command(cmd_parts)
         
         if result['success']:
             # Create default nginx config if it's an nginx container
@@ -625,21 +615,2504 @@ class DockerManager:
     
     def start_container(self, container_id):
         """Start a Docker container"""
-        result = self.run_command(f"docker start {container_id}")
+        # Validate container_id to prevent injection
+        if not validate_input(container_id, re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9_.-]*
+    
+    def remove_container(self, container_id, force=False, remove_volumes=False):
+        """Remove a Docker container"""
+        # Stop container first if it's running
+        container = self.get_container_by_id(container_id)
+        if not container:
+            return {
+                'success': False,
+                'error': 'Container not found'
+            }
+        
+        if container['status'] == 'running':
+            stop_result = self.stop_container(container_id)
+            if not stop_result['success'] and not force:
+                return {
+                    'success': False,
+                    'error': f'Failed to stop container: {stop_result["stderr"]}'
+                }
+        
+        # Remove container
+        cmd = f'docker rm {container_id}'
+        if force:
+            cmd = f'docker rm -f {container_id}'
+        
+        result = self.run_command(cmd)
+        
+        if result['success']:
+            # Optionally remove associated volumes/configs
+            if remove_volumes:
+                container_name = container['name']
+                config_dir = f'./nginx-configs/{container_name}'
+                content_dir = f'./web-content/{container_name}'
+                
+                try:
+                    import shutil
+                    if os.path.exists(config_dir):
+                        shutil.rmtree(config_dir)
+                    if os.path.exists(content_dir):
+                        shutil.rmtree(content_dir)
+                except Exception as e:
+                    result['warning'] = f'Container removed but failed to clean up directories: {str(e)}'
+            
+            # Refresh container list
+            self.refresh_containers()
+        
+        return result
+    
+    def get_container_by_id(self, container_id):
+        """Get container by ID or name"""
+        for container in self.containers:
+            if container['id'].startswith(container_id) or container['name'] == container_id:
+                return container
+        return None
+
+# Routes
+@app.route('/')
+def index():
+    """Serve the main page"""
+    return send_from_directory('.', 'index.html')
+
+@app.route('/<path:filename>')
+def serve_static(filename):
+    """Serve static files"""
+    return send_from_directory('.', filename)
+
+@app.route('/api/login', methods=['POST'])
+@limiter.limit("5 per minute")
+def login():
+    """Handle user login with security measures"""
+    ip_address = request.remote_addr
+    
+    # Check for account lockout
+    if check_account_lockout(ip_address):
+        logger.warning(f"Login attempt from locked IP: {ip_address}")
+        return jsonify({
+            'success': False, 
+            'error': 'Account temporarily locked due to too many failed attempts. Please try again later.'
+        }), 429
+    
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+    username = data.get('username', '').strip()
+    password = data.get('password', '')
+    
+    if not username or not password:
+        return jsonify({'success': False, 'error': 'Username and password required'}), 400
+    
+    # Validate input lengths
+    if len(username) > 50 or len(password) > 200:
+        return jsonify({'success': False, 'error': 'Invalid input length'}), 400
+    
+    # Check if we have a valid password hash configured
+    if not ADMIN_PASSWORD_HASH:
+        logger.error("No admin password hash configured")
+        return jsonify({'success': False, 'error': 'Server configuration error'}), 500
+    
+    # Verify credentials using secure password hashing
+    if username == ADMIN_USERNAME and check_password_hash(ADMIN_PASSWORD_HASH, password):
+        # Clear failed attempts for this IP
+        if ip_address in failed_login_attempts:
+            del failed_login_attempts[ip_address]
+        
+        # Generate secure session
+        session_token = generate_session_token()
+        session['user_id'] = session_token
+        session['csrf_token'] = secrets.token_urlsafe(32)
+        
+        # Store session info with security metadata
+        active_sessions[session_token] = {
+            'username': username,
+            'login_time': datetime.now(),
+            'last_activity': datetime.now(),
+            'ip_address': ip_address,
+            'user_agent': request.headers.get('User-Agent', 'Unknown')[:200]
+        }
+        
+        logger.info(f"Successful login for user {username} from {ip_address}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Login successful',
+            'user': username,
+            'csrf_token': session['csrf_token']
+        })
+    else:
+        # Record failed login attempt
+        record_failed_login(ip_address)
+        logger.warning(f"Failed login attempt for user {username} from {ip_address}")
+        
+        # Add delay to prevent timing attacks
+        time.sleep(1)
+        
+        return jsonify({'success': False, 'error': 'Invalid credentials'}), 401
+
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    """Handle user logout"""
+    if 'user_id' in session:
+        user_id = session['user_id']
+        if user_id in active_sessions:
+            del active_sessions[user_id]
+        session.clear()
+    
+    return jsonify({'success': True, 'message': 'Logged out successfully'})
+
+@app.route('/api/containers')
+@require_auth
+def get_containers():
+    """Get list of all containers"""
+    docker_manager.refresh_containers()
+    return jsonify({
+        'success': True,
+        'containers': docker_manager.containers
+    })
+
+@app.route('/api/containers', methods=['POST'])
+@require_auth
+def create_container():
+    """Create a new container"""
+    data = request.get_json()
+    
+    name = data.get('name', '').strip()
+    image = data.get('image', 'nginx:alpine').strip()
+    port = data.get('port')
+    volumes = data.get('volumes', [])
+    environment = data.get('environment', [])
+    
+    if not name:
+        return jsonify({
+            'success': False,
+            'error': 'Container name is required'
+        }), 400
+    
+    # Validate port if provided
+    if port is not None:
+        try:
+            port = int(port)
+            if port < 1 or port > 65535:
+                return jsonify({
+                    'success': False,
+                    'error': 'Port must be between 1 and 65535'
+                }), 400
+        except ValueError:
+            return jsonify({
+                'success': False,
+                'error': 'Port must be a valid number'
+            }), 400
+    
+    result = docker_manager.create_container(
+        name=name,
+        image=image,
+        port=port,
+        volumes=volumes,
+        environment=environment
+    )
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'message': f'Container "{name}" created successfully',
+            'container_id': result['stdout'][:12] if result['stdout'] else None
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/containers/<container_id>/start', methods=['POST'])
+@require_auth
+def start_container(container_id):
+    """Start a container"""
+    result = docker_manager.start_container(container_id)
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'message': f'Container "{container_id}" started successfully'
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/containers/<container_id>/stop', methods=['POST'])
+@require_auth
+def stop_container(container_id):
+    """Stop a container"""
+    result = docker_manager.stop_container(container_id)
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'message': f'Container "{container_id}" stopped successfully'
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/containers/<container_id>/restart', methods=['POST'])
+@require_auth
+def restart_container(container_id):
+    """Restart a container"""
+    result = docker_manager.restart_container(container_id)
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'message': f'Container "{container_id}" restarted successfully'
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/containers/<container_id>', methods=['DELETE'])
+@require_auth
+def remove_container(container_id):
+    """Remove a container"""
+    force = request.args.get('force', 'false').lower() == 'true'
+    remove_volumes = request.args.get('remove_volumes', 'false').lower() == 'true'
+    
+    result = docker_manager.remove_container(
+        container_id=container_id,
+        force=force,
+        remove_volumes=remove_volumes
+    )
+    
+    if result['success']:
+        message = f'Container "{container_id}" removed successfully'
+        if 'warning' in result:
+            message += f' (Warning: {result["warning"]})'
+        
+        return jsonify({
+            'success': True,
+            'message': message
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/postgresql/execute', methods=['POST'])
+@require_auth
+def execute_postgresql():
+    """Execute PostgreSQL query"""
+    data = request.get_json()
+    database = data.get('database')
+    query = data.get('query')
+    
+    if not database or not query:
+        return jsonify({
+            'success': False,
+            'error': 'Database and query are required'
+        }), 400
+    
+    # Execute query using psycopg2
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({
+                'success': False,
+                'error': 'Could not connect to database'
+            }), 500
+        
+        cursor = conn.cursor()
+        cursor.execute(query)
+        
+        if query.strip().upper().startswith('SELECT'):
+            results = cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description]
+            data = [dict(zip(columns, row)) for row in results]
+            result = {
+                'success': True,
+                'data': data,
+                'columns': columns,
+                'row_count': len(results)
+            }
+        else:
+            conn.commit()
+            result = {
+                'success': True,
+                'message': f'Query executed successfully. Rows affected: {cursor.rowcount}',
+                'rows_affected': cursor.rowcount
+            }
+        
+        cursor.close()
+        conn.close()
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# Initialize Docker manager
+docker_manager = DockerManager()
+
+if __name__ == '__main__':
+    print("Starting Not a cPanel server...")
+    print(f"Server: {SERVER_IP}")
+    print(f"User: {USERNAME}")
+    print(f"Access the control panel at: http://{SERVER_IP}:5000")
+    
+    # Initialize database
+    print("Initializing database...")
+    if init_database():
+        print("Database ready")
+    else:
+        print("Warning: Database initialization failed, some features may not work")
+    
+    # Initialize Docker manager
+    print("Initializing Docker manager...")
+    print(f"Found {len(docker_manager.containers)} existing containers")
+    
+    app.run(host='0.0.0.0', port=5000, debug=True)), 64):
+            return {'success': False, 'error': 'Invalid container ID'}
+        
+        result = self.run_command(["docker", "start", container_id])
         if result['success']:
             self.refresh_containers()
         return result
     
     def stop_container(self, container_id):
         """Stop a Docker container"""
-        result = self.run_command(f"docker stop {container_id}")
+        # Validate container_id to prevent injection
+        if not validate_input(container_id, re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9_.-]*
+    
+    def remove_container(self, container_id, force=False, remove_volumes=False):
+        """Remove a Docker container"""
+        # Stop container first if it's running
+        container = self.get_container_by_id(container_id)
+        if not container:
+            return {
+                'success': False,
+                'error': 'Container not found'
+            }
+        
+        if container['status'] == 'running':
+            stop_result = self.stop_container(container_id)
+            if not stop_result['success'] and not force:
+                return {
+                    'success': False,
+                    'error': f'Failed to stop container: {stop_result["stderr"]}'
+                }
+        
+        # Remove container
+        cmd = f'docker rm {container_id}'
+        if force:
+            cmd = f'docker rm -f {container_id}'
+        
+        result = self.run_command(cmd)
+        
+        if result['success']:
+            # Optionally remove associated volumes/configs
+            if remove_volumes:
+                container_name = container['name']
+                config_dir = f'./nginx-configs/{container_name}'
+                content_dir = f'./web-content/{container_name}'
+                
+                try:
+                    import shutil
+                    if os.path.exists(config_dir):
+                        shutil.rmtree(config_dir)
+                    if os.path.exists(content_dir):
+                        shutil.rmtree(content_dir)
+                except Exception as e:
+                    result['warning'] = f'Container removed but failed to clean up directories: {str(e)}'
+            
+            # Refresh container list
+            self.refresh_containers()
+        
+        return result
+    
+    def get_container_by_id(self, container_id):
+        """Get container by ID or name"""
+        for container in self.containers:
+            if container['id'].startswith(container_id) or container['name'] == container_id:
+                return container
+        return None
+
+# Routes
+@app.route('/')
+def index():
+    """Serve the main page"""
+    return send_from_directory('.', 'index.html')
+
+@app.route('/<path:filename>')
+def serve_static(filename):
+    """Serve static files"""
+    return send_from_directory('.', filename)
+
+@app.route('/api/login', methods=['POST'])
+@limiter.limit("5 per minute")
+def login():
+    """Handle user login with security measures"""
+    ip_address = request.remote_addr
+    
+    # Check for account lockout
+    if check_account_lockout(ip_address):
+        logger.warning(f"Login attempt from locked IP: {ip_address}")
+        return jsonify({
+            'success': False, 
+            'error': 'Account temporarily locked due to too many failed attempts. Please try again later.'
+        }), 429
+    
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+    username = data.get('username', '').strip()
+    password = data.get('password', '')
+    
+    if not username or not password:
+        return jsonify({'success': False, 'error': 'Username and password required'}), 400
+    
+    # Validate input lengths
+    if len(username) > 50 or len(password) > 200:
+        return jsonify({'success': False, 'error': 'Invalid input length'}), 400
+    
+    # Check if we have a valid password hash configured
+    if not ADMIN_PASSWORD_HASH:
+        logger.error("No admin password hash configured")
+        return jsonify({'success': False, 'error': 'Server configuration error'}), 500
+    
+    # Verify credentials using secure password hashing
+    if username == ADMIN_USERNAME and check_password_hash(ADMIN_PASSWORD_HASH, password):
+        # Clear failed attempts for this IP
+        if ip_address in failed_login_attempts:
+            del failed_login_attempts[ip_address]
+        
+        # Generate secure session
+        session_token = generate_session_token()
+        session['user_id'] = session_token
+        session['csrf_token'] = secrets.token_urlsafe(32)
+        
+        # Store session info with security metadata
+        active_sessions[session_token] = {
+            'username': username,
+            'login_time': datetime.now(),
+            'last_activity': datetime.now(),
+            'ip_address': ip_address,
+            'user_agent': request.headers.get('User-Agent', 'Unknown')[:200]
+        }
+        
+        logger.info(f"Successful login for user {username} from {ip_address}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Login successful',
+            'user': username,
+            'csrf_token': session['csrf_token']
+        })
+    else:
+        # Record failed login attempt
+        record_failed_login(ip_address)
+        logger.warning(f"Failed login attempt for user {username} from {ip_address}")
+        
+        # Add delay to prevent timing attacks
+        time.sleep(1)
+        
+        return jsonify({'success': False, 'error': 'Invalid credentials'}), 401
+
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    """Handle user logout"""
+    if 'user_id' in session:
+        user_id = session['user_id']
+        if user_id in active_sessions:
+            del active_sessions[user_id]
+        session.clear()
+    
+    return jsonify({'success': True, 'message': 'Logged out successfully'})
+
+@app.route('/api/containers')
+@require_auth
+def get_containers():
+    """Get list of all containers"""
+    docker_manager.refresh_containers()
+    return jsonify({
+        'success': True,
+        'containers': docker_manager.containers
+    })
+
+@app.route('/api/containers', methods=['POST'])
+@require_auth
+def create_container():
+    """Create a new container"""
+    data = request.get_json()
+    
+    name = data.get('name', '').strip()
+    image = data.get('image', 'nginx:alpine').strip()
+    port = data.get('port')
+    volumes = data.get('volumes', [])
+    environment = data.get('environment', [])
+    
+    if not name:
+        return jsonify({
+            'success': False,
+            'error': 'Container name is required'
+        }), 400
+    
+    # Validate port if provided
+    if port is not None:
+        try:
+            port = int(port)
+            if port < 1 or port > 65535:
+                return jsonify({
+                    'success': False,
+                    'error': 'Port must be between 1 and 65535'
+                }), 400
+        except ValueError:
+            return jsonify({
+                'success': False,
+                'error': 'Port must be a valid number'
+            }), 400
+    
+    result = docker_manager.create_container(
+        name=name,
+        image=image,
+        port=port,
+        volumes=volumes,
+        environment=environment
+    )
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'message': f'Container "{name}" created successfully',
+            'container_id': result['stdout'][:12] if result['stdout'] else None
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/containers/<container_id>/start', methods=['POST'])
+@require_auth
+def start_container(container_id):
+    """Start a container"""
+    result = docker_manager.start_container(container_id)
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'message': f'Container "{container_id}" started successfully'
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/containers/<container_id>/stop', methods=['POST'])
+@require_auth
+def stop_container(container_id):
+    """Stop a container"""
+    result = docker_manager.stop_container(container_id)
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'message': f'Container "{container_id}" stopped successfully'
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/containers/<container_id>/restart', methods=['POST'])
+@require_auth
+def restart_container(container_id):
+    """Restart a container"""
+    result = docker_manager.restart_container(container_id)
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'message': f'Container "{container_id}" restarted successfully'
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/containers/<container_id>', methods=['DELETE'])
+@require_auth
+def remove_container(container_id):
+    """Remove a container"""
+    force = request.args.get('force', 'false').lower() == 'true'
+    remove_volumes = request.args.get('remove_volumes', 'false').lower() == 'true'
+    
+    result = docker_manager.remove_container(
+        container_id=container_id,
+        force=force,
+        remove_volumes=remove_volumes
+    )
+    
+    if result['success']:
+        message = f'Container "{container_id}" removed successfully'
+        if 'warning' in result:
+            message += f' (Warning: {result["warning"]})'
+        
+        return jsonify({
+            'success': True,
+            'message': message
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/postgresql/execute', methods=['POST'])
+@require_auth
+def execute_postgresql():
+    """Execute PostgreSQL query"""
+    data = request.get_json()
+    database = data.get('database')
+    query = data.get('query')
+    
+    if not database or not query:
+        return jsonify({
+            'success': False,
+            'error': 'Database and query are required'
+        }), 400
+    
+    # Execute query using psycopg2
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({
+                'success': False,
+                'error': 'Could not connect to database'
+            }), 500
+        
+        cursor = conn.cursor()
+        cursor.execute(query)
+        
+        if query.strip().upper().startswith('SELECT'):
+            results = cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description]
+            data = [dict(zip(columns, row)) for row in results]
+            result = {
+                'success': True,
+                'data': data,
+                'columns': columns,
+                'row_count': len(results)
+            }
+        else:
+            conn.commit()
+            result = {
+                'success': True,
+                'message': f'Query executed successfully. Rows affected: {cursor.rowcount}',
+                'rows_affected': cursor.rowcount
+            }
+        
+        cursor.close()
+        conn.close()
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# Initialize Docker manager
+docker_manager = DockerManager()
+
+if __name__ == '__main__':
+    print("Starting Not a cPanel server...")
+    print(f"Server: {SERVER_IP}")
+    print(f"User: {USERNAME}")
+    print(f"Access the control panel at: http://{SERVER_IP}:5000")
+    
+    # Initialize database
+    print("Initializing database...")
+    if init_database():
+        print("Database ready")
+    else:
+        print("Warning: Database initialization failed, some features may not work")
+    
+    # Initialize Docker manager
+    print("Initializing Docker manager...")
+    print(f"Found {len(docker_manager.containers)} existing containers")
+    
+    app.run(host='0.0.0.0', port=5000, debug=True)), 64):
+            return {'success': False, 'error': 'Invalid container ID'}
+        
+        result = self.run_command(["docker", "stop", container_id])
         if result['success']:
             self.refresh_containers()
         return result
     
     def restart_container(self, container_id):
         """Restart a Docker container"""
-        result = self.run_command(f"docker restart {container_id}")
+        # Validate container_id to prevent injection
+        if not validate_input(container_id, re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9_.-]*
+    
+    def remove_container(self, container_id, force=False, remove_volumes=False):
+        """Remove a Docker container"""
+        # Stop container first if it's running
+        container = self.get_container_by_id(container_id)
+        if not container:
+            return {
+                'success': False,
+                'error': 'Container not found'
+            }
+        
+        if container['status'] == 'running':
+            stop_result = self.stop_container(container_id)
+            if not stop_result['success'] and not force:
+                return {
+                    'success': False,
+                    'error': f'Failed to stop container: {stop_result["stderr"]}'
+                }
+        
+        # Remove container
+        cmd = f'docker rm {container_id}'
+        if force:
+            cmd = f'docker rm -f {container_id}'
+        
+        result = self.run_command(cmd)
+        
+        if result['success']:
+            # Optionally remove associated volumes/configs
+            if remove_volumes:
+                container_name = container['name']
+                config_dir = f'./nginx-configs/{container_name}'
+                content_dir = f'./web-content/{container_name}'
+                
+                try:
+                    import shutil
+                    if os.path.exists(config_dir):
+                        shutil.rmtree(config_dir)
+                    if os.path.exists(content_dir):
+                        shutil.rmtree(content_dir)
+                except Exception as e:
+                    result['warning'] = f'Container removed but failed to clean up directories: {str(e)}'
+            
+            # Refresh container list
+            self.refresh_containers()
+        
+        return result
+    
+    def get_container_by_id(self, container_id):
+        """Get container by ID or name"""
+        for container in self.containers:
+            if container['id'].startswith(container_id) or container['name'] == container_id:
+                return container
+        return None
+
+# Routes
+@app.route('/')
+def index():
+    """Serve the main page"""
+    return send_from_directory('.', 'index.html')
+
+@app.route('/<path:filename>')
+def serve_static(filename):
+    """Serve static files"""
+    return send_from_directory('.', filename)
+
+@app.route('/api/login', methods=['POST'])
+@limiter.limit("5 per minute")
+def login():
+    """Handle user login with security measures"""
+    ip_address = request.remote_addr
+    
+    # Check for account lockout
+    if check_account_lockout(ip_address):
+        logger.warning(f"Login attempt from locked IP: {ip_address}")
+        return jsonify({
+            'success': False, 
+            'error': 'Account temporarily locked due to too many failed attempts. Please try again later.'
+        }), 429
+    
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+    username = data.get('username', '').strip()
+    password = data.get('password', '')
+    
+    if not username or not password:
+        return jsonify({'success': False, 'error': 'Username and password required'}), 400
+    
+    # Validate input lengths
+    if len(username) > 50 or len(password) > 200:
+        return jsonify({'success': False, 'error': 'Invalid input length'}), 400
+    
+    # Check if we have a valid password hash configured
+    if not ADMIN_PASSWORD_HASH:
+        logger.error("No admin password hash configured")
+        return jsonify({'success': False, 'error': 'Server configuration error'}), 500
+    
+    # Verify credentials using secure password hashing
+    if username == ADMIN_USERNAME and check_password_hash(ADMIN_PASSWORD_HASH, password):
+        # Clear failed attempts for this IP
+        if ip_address in failed_login_attempts:
+            del failed_login_attempts[ip_address]
+        
+        # Generate secure session
+        session_token = generate_session_token()
+        session['user_id'] = session_token
+        session['csrf_token'] = secrets.token_urlsafe(32)
+        
+        # Store session info with security metadata
+        active_sessions[session_token] = {
+            'username': username,
+            'login_time': datetime.now(),
+            'last_activity': datetime.now(),
+            'ip_address': ip_address,
+            'user_agent': request.headers.get('User-Agent', 'Unknown')[:200]
+        }
+        
+        logger.info(f"Successful login for user {username} from {ip_address}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Login successful',
+            'user': username,
+            'csrf_token': session['csrf_token']
+        })
+    else:
+        # Record failed login attempt
+        record_failed_login(ip_address)
+        logger.warning(f"Failed login attempt for user {username} from {ip_address}")
+        
+        # Add delay to prevent timing attacks
+        time.sleep(1)
+        
+        return jsonify({'success': False, 'error': 'Invalid credentials'}), 401
+
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    """Handle user logout"""
+    if 'user_id' in session:
+        user_id = session['user_id']
+        if user_id in active_sessions:
+            del active_sessions[user_id]
+        session.clear()
+    
+    return jsonify({'success': True, 'message': 'Logged out successfully'})
+
+@app.route('/api/containers')
+@require_auth
+def get_containers():
+    """Get list of all containers"""
+    docker_manager.refresh_containers()
+    return jsonify({
+        'success': True,
+        'containers': docker_manager.containers
+    })
+
+@app.route('/api/containers', methods=['POST'])
+@require_auth
+def create_container():
+    """Create a new container"""
+    data = request.get_json()
+    
+    name = data.get('name', '').strip()
+    image = data.get('image', 'nginx:alpine').strip()
+    port = data.get('port')
+    volumes = data.get('volumes', [])
+    environment = data.get('environment', [])
+    
+    if not name:
+        return jsonify({
+            'success': False,
+            'error': 'Container name is required'
+        }), 400
+    
+    # Validate port if provided
+    if port is not None:
+        try:
+            port = int(port)
+            if port < 1 or port > 65535:
+                return jsonify({
+                    'success': False,
+                    'error': 'Port must be between 1 and 65535'
+                }), 400
+        except ValueError:
+            return jsonify({
+                'success': False,
+                'error': 'Port must be a valid number'
+            }), 400
+    
+    result = docker_manager.create_container(
+        name=name,
+        image=image,
+        port=port,
+        volumes=volumes,
+        environment=environment
+    )
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'message': f'Container "{name}" created successfully',
+            'container_id': result['stdout'][:12] if result['stdout'] else None
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/containers/<container_id>/start', methods=['POST'])
+@require_auth
+def start_container(container_id):
+    """Start a container"""
+    result = docker_manager.start_container(container_id)
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'message': f'Container "{container_id}" started successfully'
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/containers/<container_id>/stop', methods=['POST'])
+@require_auth
+def stop_container(container_id):
+    """Stop a container"""
+    result = docker_manager.stop_container(container_id)
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'message': f'Container "{container_id}" stopped successfully'
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/containers/<container_id>/restart', methods=['POST'])
+@require_auth
+def restart_container(container_id):
+    """Restart a container"""
+    result = docker_manager.restart_container(container_id)
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'message': f'Container "{container_id}" restarted successfully'
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/containers/<container_id>', methods=['DELETE'])
+@require_auth
+def remove_container(container_id):
+    """Remove a container"""
+    force = request.args.get('force', 'false').lower() == 'true'
+    remove_volumes = request.args.get('remove_volumes', 'false').lower() == 'true'
+    
+    result = docker_manager.remove_container(
+        container_id=container_id,
+        force=force,
+        remove_volumes=remove_volumes
+    )
+    
+    if result['success']:
+        message = f'Container "{container_id}" removed successfully'
+        if 'warning' in result:
+            message += f' (Warning: {result["warning"]})'
+        
+        return jsonify({
+            'success': True,
+            'message': message
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/postgresql/execute', methods=['POST'])
+@require_auth
+def execute_postgresql():
+    """Execute PostgreSQL query"""
+    data = request.get_json()
+    database = data.get('database')
+    query = data.get('query')
+    
+    if not database or not query:
+        return jsonify({
+            'success': False,
+            'error': 'Database and query are required'
+        }), 400
+    
+    # Execute query using psycopg2
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({
+                'success': False,
+                'error': 'Could not connect to database'
+            }), 500
+        
+        cursor = conn.cursor()
+        cursor.execute(query)
+        
+        if query.strip().upper().startswith('SELECT'):
+            results = cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description]
+            data = [dict(zip(columns, row)) for row in results]
+            result = {
+                'success': True,
+                'data': data,
+                'columns': columns,
+                'row_count': len(results)
+            }
+        else:
+            conn.commit()
+            result = {
+                'success': True,
+                'message': f'Query executed successfully. Rows affected: {cursor.rowcount}',
+                'rows_affected': cursor.rowcount
+            }
+        
+        cursor.close()
+        conn.close()
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# Initialize Docker manager
+docker_manager = DockerManager()
+
+if __name__ == '__main__':
+    print("Starting Not a cPanel server...")
+    print(f"Server: {SERVER_IP}")
+    print(f"User: {USERNAME}")
+    print(f"Access the control panel at: http://{SERVER_IP}:5000")
+    
+    # Initialize database
+    print("Initializing database...")
+    if init_database():
+        print("Database ready")
+    else:
+        print("Warning: Database initialization failed, some features may not work")
+    
+    # Initialize Docker manager
+    print("Initializing Docker manager...")
+    print(f"Found {len(docker_manager.containers)} existing containers")
+    
+    app.run(host='0.0.0.0', port=5000, debug=True)), 64):
+            return {'success': False, 'error': 'Invalid container ID'}
+        
+        result = self.run_command(["docker", "restart", container_id])
+        if result['success']:
+            self.refresh_containers()
+        return result
+    
+    def remove_container(self, container_id, force=False, remove_volumes=False):
+        """Remove a Docker container"""
+        # Stop container first if it's running
+        container = self.get_container_by_id(container_id)
+        if not container:
+            return {
+                'success': False,
+                'error': 'Container not found'
+            }
+        
+        if container['status'] == 'running':
+            stop_result = self.stop_container(container_id)
+            if not stop_result['success'] and not force:
+                return {
+                    'success': False,
+                    'error': f'Failed to stop container: {stop_result["stderr"]}'
+                }
+        
+        # Remove container
+        cmd = f'docker rm {container_id}'
+        if force:
+            cmd = f'docker rm -f {container_id}'
+        
+        result = self.run_command(cmd)
+        
+        if result['success']:
+            # Optionally remove associated volumes/configs
+            if remove_volumes:
+                container_name = container['name']
+                config_dir = f'./nginx-configs/{container_name}'
+                content_dir = f'./web-content/{container_name}'
+                
+                try:
+                    import shutil
+                    if os.path.exists(config_dir):
+                        shutil.rmtree(config_dir)
+                    if os.path.exists(content_dir):
+                        shutil.rmtree(content_dir)
+                except Exception as e:
+                    result['warning'] = f'Container removed but failed to clean up directories: {str(e)}'
+            
+            # Refresh container list
+            self.refresh_containers()
+        
+        return result
+    
+    def get_container_by_id(self, container_id):
+        """Get container by ID or name"""
+        for container in self.containers:
+            if container['id'].startswith(container_id) or container['name'] == container_id:
+                return container
+        return None
+
+# Routes
+@app.route('/')
+def index():
+    """Serve the main page"""
+    return send_from_directory('.', 'index.html')
+
+@app.route('/<path:filename>')
+def serve_static(filename):
+    """Serve static files"""
+    return send_from_directory('.', filename)
+
+@app.route('/api/login', methods=['POST'])
+@limiter.limit("5 per minute")
+def login():
+    """Handle user login with security measures"""
+    ip_address = request.remote_addr
+    
+    # Check for account lockout
+    if check_account_lockout(ip_address):
+        logger.warning(f"Login attempt from locked IP: {ip_address}")
+        return jsonify({
+            'success': False, 
+            'error': 'Account temporarily locked due to too many failed attempts. Please try again later.'
+        }), 429
+    
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+    username = data.get('username', '').strip()
+    password = data.get('password', '')
+    
+    if not username or not password:
+        return jsonify({'success': False, 'error': 'Username and password required'}), 400
+    
+    # Validate input lengths
+    if len(username) > 50 or len(password) > 200:
+        return jsonify({'success': False, 'error': 'Invalid input length'}), 400
+    
+    # Check if we have a valid password hash configured
+    if not ADMIN_PASSWORD_HASH:
+        logger.error("No admin password hash configured")
+        return jsonify({'success': False, 'error': 'Server configuration error'}), 500
+    
+    # Verify credentials using secure password hashing
+    if username == ADMIN_USERNAME and check_password_hash(ADMIN_PASSWORD_HASH, password):
+        # Clear failed attempts for this IP
+        if ip_address in failed_login_attempts:
+            del failed_login_attempts[ip_address]
+        
+        # Generate secure session
+        session_token = generate_session_token()
+        session['user_id'] = session_token
+        session['csrf_token'] = secrets.token_urlsafe(32)
+        
+        # Store session info with security metadata
+        active_sessions[session_token] = {
+            'username': username,
+            'login_time': datetime.now(),
+            'last_activity': datetime.now(),
+            'ip_address': ip_address,
+            'user_agent': request.headers.get('User-Agent', 'Unknown')[:200]
+        }
+        
+        logger.info(f"Successful login for user {username} from {ip_address}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Login successful',
+            'user': username,
+            'csrf_token': session['csrf_token']
+        })
+    else:
+        # Record failed login attempt
+        record_failed_login(ip_address)
+        logger.warning(f"Failed login attempt for user {username} from {ip_address}")
+        
+        # Add delay to prevent timing attacks
+        time.sleep(1)
+        
+        return jsonify({'success': False, 'error': 'Invalid credentials'}), 401
+
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    """Handle user logout"""
+    if 'user_id' in session:
+        user_id = session['user_id']
+        if user_id in active_sessions:
+            del active_sessions[user_id]
+        session.clear()
+    
+    return jsonify({'success': True, 'message': 'Logged out successfully'})
+
+@app.route('/api/containers')
+@require_auth
+def get_containers():
+    """Get list of all containers"""
+    docker_manager.refresh_containers()
+    return jsonify({
+        'success': True,
+        'containers': docker_manager.containers
+    })
+
+@app.route('/api/containers', methods=['POST'])
+@require_auth
+def create_container():
+    """Create a new container"""
+    data = request.get_json()
+    
+    name = data.get('name', '').strip()
+    image = data.get('image', 'nginx:alpine').strip()
+    port = data.get('port')
+    volumes = data.get('volumes', [])
+    environment = data.get('environment', [])
+    
+    if not name:
+        return jsonify({
+            'success': False,
+            'error': 'Container name is required'
+        }), 400
+    
+    # Validate port if provided
+    if port is not None:
+        try:
+            port = int(port)
+            if port < 1 or port > 65535:
+                return jsonify({
+                    'success': False,
+                    'error': 'Port must be between 1 and 65535'
+                }), 400
+        except ValueError:
+            return jsonify({
+                'success': False,
+                'error': 'Port must be a valid number'
+            }), 400
+    
+    result = docker_manager.create_container(
+        name=name,
+        image=image,
+        port=port,
+        volumes=volumes,
+        environment=environment
+    )
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'message': f'Container "{name}" created successfully',
+            'container_id': result['stdout'][:12] if result['stdout'] else None
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/containers/<container_id>/start', methods=['POST'])
+@require_auth
+def start_container(container_id):
+    """Start a container"""
+    result = docker_manager.start_container(container_id)
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'message': f'Container "{container_id}" started successfully'
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/containers/<container_id>/stop', methods=['POST'])
+@require_auth
+def stop_container(container_id):
+    """Stop a container"""
+    result = docker_manager.stop_container(container_id)
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'message': f'Container "{container_id}" stopped successfully'
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/containers/<container_id>/restart', methods=['POST'])
+@require_auth
+def restart_container(container_id):
+    """Restart a container"""
+    result = docker_manager.restart_container(container_id)
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'message': f'Container "{container_id}" restarted successfully'
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/containers/<container_id>', methods=['DELETE'])
+@require_auth
+def remove_container(container_id):
+    """Remove a container"""
+    force = request.args.get('force', 'false').lower() == 'true'
+    remove_volumes = request.args.get('remove_volumes', 'false').lower() == 'true'
+    
+    result = docker_manager.remove_container(
+        container_id=container_id,
+        force=force,
+        remove_volumes=remove_volumes
+    )
+    
+    if result['success']:
+        message = f'Container "{container_id}" removed successfully'
+        if 'warning' in result:
+            message += f' (Warning: {result["warning"]})'
+        
+        return jsonify({
+            'success': True,
+            'message': message
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/postgresql/execute', methods=['POST'])
+@require_auth
+def execute_postgresql():
+    """Execute PostgreSQL query"""
+    data = request.get_json()
+    database = data.get('database')
+    query = data.get('query')
+    
+    if not database or not query:
+        return jsonify({
+            'success': False,
+            'error': 'Database and query are required'
+        }), 400
+    
+    # Execute query using psycopg2
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({
+                'success': False,
+                'error': 'Could not connect to database'
+            }), 500
+        
+        cursor = conn.cursor()
+        cursor.execute(query)
+        
+        if query.strip().upper().startswith('SELECT'):
+            results = cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description]
+            data = [dict(zip(columns, row)) for row in results]
+            result = {
+                'success': True,
+                'data': data,
+                'columns': columns,
+                'row_count': len(results)
+            }
+        else:
+            conn.commit()
+            result = {
+                'success': True,
+                'message': f'Query executed successfully. Rows affected: {cursor.rowcount}',
+                'rows_affected': cursor.rowcount
+            }
+        
+        cursor.close()
+        conn.close()
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# Initialize Docker manager
+docker_manager = DockerManager()
+
+if __name__ == '__main__':
+    print("Starting Not a cPanel server...")
+    print(f"Server: {SERVER_IP}")
+    print(f"User: {USERNAME}")
+    print(f"Access the control panel at: http://{SERVER_IP}:5000")
+    
+    # Initialize database
+    print("Initializing database...")
+    if init_database():
+        print("Database ready")
+    else:
+        print("Warning: Database initialization failed, some features may not work")
+    
+    # Initialize Docker manager
+    print("Initializing Docker manager...")
+    print(f"Found {len(docker_manager.containers)} existing containers")
+    
+    app.run(host='0.0.0.0', port=5000, debug=True)), 64):
+    
+    def remove_container(self, container_id, force=False, remove_volumes=False):
+        """Remove a Docker container"""
+        # Stop container first if it's running
+        container = self.get_container_by_id(container_id)
+        if not container:
+            return {
+                'success': False,
+                'error': 'Container not found'
+            }
+        
+        if container['status'] == 'running':
+            stop_result = self.stop_container(container_id)
+            if not stop_result['success'] and not force:
+                return {
+                    'success': False,
+                    'error': f'Failed to stop container: {stop_result["stderr"]}'
+                }
+        
+        # Remove container
+        cmd = f'docker rm {container_id}'
+        if force:
+            cmd = f'docker rm -f {container_id}'
+        
+        result = self.run_command(cmd)
+        
+        if result['success']:
+            # Optionally remove associated volumes/configs
+            if remove_volumes:
+                container_name = container['name']
+                config_dir = f'./nginx-configs/{container_name}'
+                content_dir = f'./web-content/{container_name}'
+                
+                try:
+                    import shutil
+                    if os.path.exists(config_dir):
+                        shutil.rmtree(config_dir)
+                    if os.path.exists(content_dir):
+                        shutil.rmtree(content_dir)
+                except Exception as e:
+                    result['warning'] = f'Container removed but failed to clean up directories: {str(e)}'
+            
+            # Refresh container list
+            self.refresh_containers()
+        
+        return result
+    
+    def get_container_by_id(self, container_id):
+        """Get container by ID or name"""
+        for container in self.containers:
+            if container['id'].startswith(container_id) or container['name'] == container_id:
+                return container
+        return None
+
+# Routes
+@app.route('/')
+def index():
+    """Serve the main page"""
+    return send_from_directory('.', 'index.html')
+
+@app.route('/<path:filename>')
+def serve_static(filename):
+    """Serve static files"""
+    return send_from_directory('.', filename)
+
+@app.route('/api/login', methods=['POST'])
+@limiter.limit("5 per minute")
+def login():
+    """Handle user login with security measures"""
+    ip_address = request.remote_addr
+    
+    # Check for account lockout
+    if check_account_lockout(ip_address):
+        logger.warning(f"Login attempt from locked IP: {ip_address}")
+        return jsonify({
+            'success': False, 
+            'error': 'Account temporarily locked due to too many failed attempts. Please try again later.'
+        }), 429
+    
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+    username = data.get('username', '').strip()
+    password = data.get('password', '')
+    
+    if not username or not password:
+        return jsonify({'success': False, 'error': 'Username and password required'}), 400
+    
+    # Validate input lengths
+    if len(username) > 50 or len(password) > 200:
+        return jsonify({'success': False, 'error': 'Invalid input length'}), 400
+    
+    # Check if we have a valid password hash configured
+    if not ADMIN_PASSWORD_HASH:
+        logger.error("No admin password hash configured")
+        return jsonify({'success': False, 'error': 'Server configuration error'}), 500
+    
+    # Verify credentials using secure password hashing
+    if username == ADMIN_USERNAME and check_password_hash(ADMIN_PASSWORD_HASH, password):
+        # Clear failed attempts for this IP
+        if ip_address in failed_login_attempts:
+            del failed_login_attempts[ip_address]
+        
+        # Generate secure session
+        session_token = generate_session_token()
+        session['user_id'] = session_token
+        session['csrf_token'] = secrets.token_urlsafe(32)
+        
+        # Store session info with security metadata
+        active_sessions[session_token] = {
+            'username': username,
+            'login_time': datetime.now(),
+            'last_activity': datetime.now(),
+            'ip_address': ip_address,
+            'user_agent': request.headers.get('User-Agent', 'Unknown')[:200]
+        }
+        
+        logger.info(f"Successful login for user {username} from {ip_address}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Login successful',
+            'user': username,
+            'csrf_token': session['csrf_token']
+        })
+    else:
+        # Record failed login attempt
+        record_failed_login(ip_address)
+        logger.warning(f"Failed login attempt for user {username} from {ip_address}")
+        
+        # Add delay to prevent timing attacks
+        time.sleep(1)
+        
+        return jsonify({'success': False, 'error': 'Invalid credentials'}), 401
+
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    """Handle user logout"""
+    if 'user_id' in session:
+        user_id = session['user_id']
+        if user_id in active_sessions:
+            del active_sessions[user_id]
+        session.clear()
+    
+    return jsonify({'success': True, 'message': 'Logged out successfully'})
+
+@app.route('/api/containers')
+@require_auth
+def get_containers():
+    """Get list of all containers"""
+    docker_manager.refresh_containers()
+    return jsonify({
+        'success': True,
+        'containers': docker_manager.containers
+    })
+
+@app.route('/api/containers', methods=['POST'])
+@require_auth
+def create_container():
+    """Create a new container"""
+    data = request.get_json()
+    
+    name = data.get('name', '').strip()
+    image = data.get('image', 'nginx:alpine').strip()
+    port = data.get('port')
+    volumes = data.get('volumes', [])
+    environment = data.get('environment', [])
+    
+    if not name:
+        return jsonify({
+            'success': False,
+            'error': 'Container name is required'
+        }), 400
+    
+    # Validate port if provided
+    if port is not None:
+        try:
+            port = int(port)
+            if port < 1 or port > 65535:
+                return jsonify({
+                    'success': False,
+                    'error': 'Port must be between 1 and 65535'
+                }), 400
+        except ValueError:
+            return jsonify({
+                'success': False,
+                'error': 'Port must be a valid number'
+            }), 400
+    
+    result = docker_manager.create_container(
+        name=name,
+        image=image,
+        port=port,
+        volumes=volumes,
+        environment=environment
+    )
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'message': f'Container "{name}" created successfully',
+            'container_id': result['stdout'][:12] if result['stdout'] else None
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/containers/<container_id>/start', methods=['POST'])
+@require_auth
+def start_container(container_id):
+    """Start a container"""
+    result = docker_manager.start_container(container_id)
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'message': f'Container "{container_id}" started successfully'
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/containers/<container_id>/stop', methods=['POST'])
+@require_auth
+def stop_container(container_id):
+    """Stop a container"""
+    result = docker_manager.stop_container(container_id)
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'message': f'Container "{container_id}" stopped successfully'
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/containers/<container_id>/restart', methods=['POST'])
+@require_auth
+def restart_container(container_id):
+    """Restart a container"""
+    result = docker_manager.restart_container(container_id)
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'message': f'Container "{container_id}" restarted successfully'
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/containers/<container_id>', methods=['DELETE'])
+@require_auth
+def remove_container(container_id):
+    """Remove a container"""
+    force = request.args.get('force', 'false').lower() == 'true'
+    remove_volumes = request.args.get('remove_volumes', 'false').lower() == 'true'
+    
+    result = docker_manager.remove_container(
+        container_id=container_id,
+        force=force,
+        remove_volumes=remove_volumes
+    )
+    
+    if result['success']:
+        message = f'Container "{container_id}" removed successfully'
+        if 'warning' in result:
+            message += f' (Warning: {result["warning"]})'
+        
+        return jsonify({
+            'success': True,
+            'message': message
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/postgresql/execute', methods=['POST'])
+@require_auth
+def execute_postgresql():
+    """Execute PostgreSQL query"""
+    data = request.get_json()
+    database = data.get('database')
+    query = data.get('query')
+    
+    if not database or not query:
+        return jsonify({
+            'success': False,
+            'error': 'Database and query are required'
+        }), 400
+    
+    # Execute query using psycopg2
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({
+                'success': False,
+                'error': 'Could not connect to database'
+            }), 500
+        
+        cursor = conn.cursor()
+        cursor.execute(query)
+        
+        if query.strip().upper().startswith('SELECT'):
+            results = cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description]
+            data = [dict(zip(columns, row)) for row in results]
+            result = {
+                'success': True,
+                'data': data,
+                'columns': columns,
+                'row_count': len(results)
+            }
+        else:
+            conn.commit()
+            result = {
+                'success': True,
+                'message': f'Query executed successfully. Rows affected: {cursor.rowcount}',
+                'rows_affected': cursor.rowcount
+            }
+        
+        cursor.close()
+        conn.close()
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# Initialize Docker manager
+docker_manager = DockerManager()
+
+if __name__ == '__main__':
+    print("Starting Not a cPanel server...")
+    print(f"Server: {SERVER_IP}")
+    print(f"User: {USERNAME}")
+    print(f"Access the control panel at: http://{SERVER_IP}:5000")
+    
+    # Initialize database
+    print("Initializing database...")
+    if init_database():
+        print("Database ready")
+    else:
+        print("Warning: Database initialization failed, some features may not work")
+    
+    # Initialize Docker manager
+    print("Initializing Docker manager...")
+    print(f"Found {len(docker_manager.containers)} existing containers")
+    
+    app.run(host='0.0.0.0', port=5000, debug=True)), 64):
+            return {'success': False, 'error': 'Invalid container ID'}
+        
+        result = self.run_command(["docker", "start", container_id])
+        if result['success']:
+            self.refresh_containers()
+        return result
+    
+    def stop_container(self, container_id):
+        """Stop a Docker container"""
+        # Validate container_id to prevent injection
+        if not validate_input(container_id, re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9_.-]*
+    
+    def remove_container(self, container_id, force=False, remove_volumes=False):
+        """Remove a Docker container"""
+        # Stop container first if it's running
+        container = self.get_container_by_id(container_id)
+        if not container:
+            return {
+                'success': False,
+                'error': 'Container not found'
+            }
+        
+        if container['status'] == 'running':
+            stop_result = self.stop_container(container_id)
+            if not stop_result['success'] and not force:
+                return {
+                    'success': False,
+                    'error': f'Failed to stop container: {stop_result["stderr"]}'
+                }
+        
+        # Remove container
+        cmd = f'docker rm {container_id}'
+        if force:
+            cmd = f'docker rm -f {container_id}'
+        
+        result = self.run_command(cmd)
+        
+        if result['success']:
+            # Optionally remove associated volumes/configs
+            if remove_volumes:
+                container_name = container['name']
+                config_dir = f'./nginx-configs/{container_name}'
+                content_dir = f'./web-content/{container_name}'
+                
+                try:
+                    import shutil
+                    if os.path.exists(config_dir):
+                        shutil.rmtree(config_dir)
+                    if os.path.exists(content_dir):
+                        shutil.rmtree(content_dir)
+                except Exception as e:
+                    result['warning'] = f'Container removed but failed to clean up directories: {str(e)}'
+            
+            # Refresh container list
+            self.refresh_containers()
+        
+        return result
+    
+    def get_container_by_id(self, container_id):
+        """Get container by ID or name"""
+        for container in self.containers:
+            if container['id'].startswith(container_id) or container['name'] == container_id:
+                return container
+        return None
+
+# Routes
+@app.route('/')
+def index():
+    """Serve the main page"""
+    return send_from_directory('.', 'index.html')
+
+@app.route('/<path:filename>')
+def serve_static(filename):
+    """Serve static files"""
+    return send_from_directory('.', filename)
+
+@app.route('/api/login', methods=['POST'])
+@limiter.limit("5 per minute")
+def login():
+    """Handle user login with security measures"""
+    ip_address = request.remote_addr
+    
+    # Check for account lockout
+    if check_account_lockout(ip_address):
+        logger.warning(f"Login attempt from locked IP: {ip_address}")
+        return jsonify({
+            'success': False, 
+            'error': 'Account temporarily locked due to too many failed attempts. Please try again later.'
+        }), 429
+    
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+    username = data.get('username', '').strip()
+    password = data.get('password', '')
+    
+    if not username or not password:
+        return jsonify({'success': False, 'error': 'Username and password required'}), 400
+    
+    # Validate input lengths
+    if len(username) > 50 or len(password) > 200:
+        return jsonify({'success': False, 'error': 'Invalid input length'}), 400
+    
+    # Check if we have a valid password hash configured
+    if not ADMIN_PASSWORD_HASH:
+        logger.error("No admin password hash configured")
+        return jsonify({'success': False, 'error': 'Server configuration error'}), 500
+    
+    # Verify credentials using secure password hashing
+    if username == ADMIN_USERNAME and check_password_hash(ADMIN_PASSWORD_HASH, password):
+        # Clear failed attempts for this IP
+        if ip_address in failed_login_attempts:
+            del failed_login_attempts[ip_address]
+        
+        # Generate secure session
+        session_token = generate_session_token()
+        session['user_id'] = session_token
+        session['csrf_token'] = secrets.token_urlsafe(32)
+        
+        # Store session info with security metadata
+        active_sessions[session_token] = {
+            'username': username,
+            'login_time': datetime.now(),
+            'last_activity': datetime.now(),
+            'ip_address': ip_address,
+            'user_agent': request.headers.get('User-Agent', 'Unknown')[:200]
+        }
+        
+        logger.info(f"Successful login for user {username} from {ip_address}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Login successful',
+            'user': username,
+            'csrf_token': session['csrf_token']
+        })
+    else:
+        # Record failed login attempt
+        record_failed_login(ip_address)
+        logger.warning(f"Failed login attempt for user {username} from {ip_address}")
+        
+        # Add delay to prevent timing attacks
+        time.sleep(1)
+        
+        return jsonify({'success': False, 'error': 'Invalid credentials'}), 401
+
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    """Handle user logout"""
+    if 'user_id' in session:
+        user_id = session['user_id']
+        if user_id in active_sessions:
+            del active_sessions[user_id]
+        session.clear()
+    
+    return jsonify({'success': True, 'message': 'Logged out successfully'})
+
+@app.route('/api/containers')
+@require_auth
+def get_containers():
+    """Get list of all containers"""
+    docker_manager.refresh_containers()
+    return jsonify({
+        'success': True,
+        'containers': docker_manager.containers
+    })
+
+@app.route('/api/containers', methods=['POST'])
+@require_auth
+def create_container():
+    """Create a new container"""
+    data = request.get_json()
+    
+    name = data.get('name', '').strip()
+    image = data.get('image', 'nginx:alpine').strip()
+    port = data.get('port')
+    volumes = data.get('volumes', [])
+    environment = data.get('environment', [])
+    
+    if not name:
+        return jsonify({
+            'success': False,
+            'error': 'Container name is required'
+        }), 400
+    
+    # Validate port if provided
+    if port is not None:
+        try:
+            port = int(port)
+            if port < 1 or port > 65535:
+                return jsonify({
+                    'success': False,
+                    'error': 'Port must be between 1 and 65535'
+                }), 400
+        except ValueError:
+            return jsonify({
+                'success': False,
+                'error': 'Port must be a valid number'
+            }), 400
+    
+    result = docker_manager.create_container(
+        name=name,
+        image=image,
+        port=port,
+        volumes=volumes,
+        environment=environment
+    )
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'message': f'Container "{name}" created successfully',
+            'container_id': result['stdout'][:12] if result['stdout'] else None
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/containers/<container_id>/start', methods=['POST'])
+@require_auth
+def start_container(container_id):
+    """Start a container"""
+    result = docker_manager.start_container(container_id)
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'message': f'Container "{container_id}" started successfully'
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/containers/<container_id>/stop', methods=['POST'])
+@require_auth
+def stop_container(container_id):
+    """Stop a container"""
+    result = docker_manager.stop_container(container_id)
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'message': f'Container "{container_id}" stopped successfully'
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/containers/<container_id>/restart', methods=['POST'])
+@require_auth
+def restart_container(container_id):
+    """Restart a container"""
+    result = docker_manager.restart_container(container_id)
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'message': f'Container "{container_id}" restarted successfully'
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/containers/<container_id>', methods=['DELETE'])
+@require_auth
+def remove_container(container_id):
+    """Remove a container"""
+    force = request.args.get('force', 'false').lower() == 'true'
+    remove_volumes = request.args.get('remove_volumes', 'false').lower() == 'true'
+    
+    result = docker_manager.remove_container(
+        container_id=container_id,
+        force=force,
+        remove_volumes=remove_volumes
+    )
+    
+    if result['success']:
+        message = f'Container "{container_id}" removed successfully'
+        if 'warning' in result:
+            message += f' (Warning: {result["warning"]})'
+        
+        return jsonify({
+            'success': True,
+            'message': message
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/postgresql/execute', methods=['POST'])
+@require_auth
+def execute_postgresql():
+    """Execute PostgreSQL query"""
+    data = request.get_json()
+    database = data.get('database')
+    query = data.get('query')
+    
+    if not database or not query:
+        return jsonify({
+            'success': False,
+            'error': 'Database and query are required'
+        }), 400
+    
+    # Execute query using psycopg2
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({
+                'success': False,
+                'error': 'Could not connect to database'
+            }), 500
+        
+        cursor = conn.cursor()
+        cursor.execute(query)
+        
+        if query.strip().upper().startswith('SELECT'):
+            results = cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description]
+            data = [dict(zip(columns, row)) for row in results]
+            result = {
+                'success': True,
+                'data': data,
+                'columns': columns,
+                'row_count': len(results)
+            }
+        else:
+            conn.commit()
+            result = {
+                'success': True,
+                'message': f'Query executed successfully. Rows affected: {cursor.rowcount}',
+                'rows_affected': cursor.rowcount
+            }
+        
+        cursor.close()
+        conn.close()
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# Initialize Docker manager
+docker_manager = DockerManager()
+
+if __name__ == '__main__':
+    print("Starting Not a cPanel server...")
+    print(f"Server: {SERVER_IP}")
+    print(f"User: {USERNAME}")
+    print(f"Access the control panel at: http://{SERVER_IP}:5000")
+    
+    # Initialize database
+    print("Initializing database...")
+    if init_database():
+        print("Database ready")
+    else:
+        print("Warning: Database initialization failed, some features may not work")
+    
+    # Initialize Docker manager
+    print("Initializing Docker manager...")
+    print(f"Found {len(docker_manager.containers)} existing containers")
+    
+    app.run(host='0.0.0.0', port=5000, debug=True)), 64):
+            return {'success': False, 'error': 'Invalid container ID'}
+        
+        result = self.run_command(["docker", "stop", container_id])
+        if result['success']:
+            self.refresh_containers()
+        return result
+    
+    def restart_container(self, container_id):
+        """Restart a Docker container"""
+        # Validate container_id to prevent injection
+        if not validate_input(container_id, re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9_.-]*
+    
+    def remove_container(self, container_id, force=False, remove_volumes=False):
+        """Remove a Docker container"""
+        # Stop container first if it's running
+        container = self.get_container_by_id(container_id)
+        if not container:
+            return {
+                'success': False,
+                'error': 'Container not found'
+            }
+        
+        if container['status'] == 'running':
+            stop_result = self.stop_container(container_id)
+            if not stop_result['success'] and not force:
+                return {
+                    'success': False,
+                    'error': f'Failed to stop container: {stop_result["stderr"]}'
+                }
+        
+        # Remove container
+        cmd = f'docker rm {container_id}'
+        if force:
+            cmd = f'docker rm -f {container_id}'
+        
+        result = self.run_command(cmd)
+        
+        if result['success']:
+            # Optionally remove associated volumes/configs
+            if remove_volumes:
+                container_name = container['name']
+                config_dir = f'./nginx-configs/{container_name}'
+                content_dir = f'./web-content/{container_name}'
+                
+                try:
+                    import shutil
+                    if os.path.exists(config_dir):
+                        shutil.rmtree(config_dir)
+                    if os.path.exists(content_dir):
+                        shutil.rmtree(content_dir)
+                except Exception as e:
+                    result['warning'] = f'Container removed but failed to clean up directories: {str(e)}'
+            
+            # Refresh container list
+            self.refresh_containers()
+        
+        return result
+    
+    def get_container_by_id(self, container_id):
+        """Get container by ID or name"""
+        for container in self.containers:
+            if container['id'].startswith(container_id) or container['name'] == container_id:
+                return container
+        return None
+
+# Routes
+@app.route('/')
+def index():
+    """Serve the main page"""
+    return send_from_directory('.', 'index.html')
+
+@app.route('/<path:filename>')
+def serve_static(filename):
+    """Serve static files"""
+    return send_from_directory('.', filename)
+
+@app.route('/api/login', methods=['POST'])
+@limiter.limit("5 per minute")
+def login():
+    """Handle user login with security measures"""
+    ip_address = request.remote_addr
+    
+    # Check for account lockout
+    if check_account_lockout(ip_address):
+        logger.warning(f"Login attempt from locked IP: {ip_address}")
+        return jsonify({
+            'success': False, 
+            'error': 'Account temporarily locked due to too many failed attempts. Please try again later.'
+        }), 429
+    
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': 'No data provided'}), 400
+        
+    username = data.get('username', '').strip()
+    password = data.get('password', '')
+    
+    if not username or not password:
+        return jsonify({'success': False, 'error': 'Username and password required'}), 400
+    
+    # Validate input lengths
+    if len(username) > 50 or len(password) > 200:
+        return jsonify({'success': False, 'error': 'Invalid input length'}), 400
+    
+    # Check if we have a valid password hash configured
+    if not ADMIN_PASSWORD_HASH:
+        logger.error("No admin password hash configured")
+        return jsonify({'success': False, 'error': 'Server configuration error'}), 500
+    
+    # Verify credentials using secure password hashing
+    if username == ADMIN_USERNAME and check_password_hash(ADMIN_PASSWORD_HASH, password):
+        # Clear failed attempts for this IP
+        if ip_address in failed_login_attempts:
+            del failed_login_attempts[ip_address]
+        
+        # Generate secure session
+        session_token = generate_session_token()
+        session['user_id'] = session_token
+        session['csrf_token'] = secrets.token_urlsafe(32)
+        
+        # Store session info with security metadata
+        active_sessions[session_token] = {
+            'username': username,
+            'login_time': datetime.now(),
+            'last_activity': datetime.now(),
+            'ip_address': ip_address,
+            'user_agent': request.headers.get('User-Agent', 'Unknown')[:200]
+        }
+        
+        logger.info(f"Successful login for user {username} from {ip_address}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Login successful',
+            'user': username,
+            'csrf_token': session['csrf_token']
+        })
+    else:
+        # Record failed login attempt
+        record_failed_login(ip_address)
+        logger.warning(f"Failed login attempt for user {username} from {ip_address}")
+        
+        # Add delay to prevent timing attacks
+        time.sleep(1)
+        
+        return jsonify({'success': False, 'error': 'Invalid credentials'}), 401
+
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    """Handle user logout"""
+    if 'user_id' in session:
+        user_id = session['user_id']
+        if user_id in active_sessions:
+            del active_sessions[user_id]
+        session.clear()
+    
+    return jsonify({'success': True, 'message': 'Logged out successfully'})
+
+@app.route('/api/containers')
+@require_auth
+def get_containers():
+    """Get list of all containers"""
+    docker_manager.refresh_containers()
+    return jsonify({
+        'success': True,
+        'containers': docker_manager.containers
+    })
+
+@app.route('/api/containers', methods=['POST'])
+@require_auth
+def create_container():
+    """Create a new container"""
+    data = request.get_json()
+    
+    name = data.get('name', '').strip()
+    image = data.get('image', 'nginx:alpine').strip()
+    port = data.get('port')
+    volumes = data.get('volumes', [])
+    environment = data.get('environment', [])
+    
+    if not name:
+        return jsonify({
+            'success': False,
+            'error': 'Container name is required'
+        }), 400
+    
+    # Validate port if provided
+    if port is not None:
+        try:
+            port = int(port)
+            if port < 1 or port > 65535:
+                return jsonify({
+                    'success': False,
+                    'error': 'Port must be between 1 and 65535'
+                }), 400
+        except ValueError:
+            return jsonify({
+                'success': False,
+                'error': 'Port must be a valid number'
+            }), 400
+    
+    result = docker_manager.create_container(
+        name=name,
+        image=image,
+        port=port,
+        volumes=volumes,
+        environment=environment
+    )
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'message': f'Container "{name}" created successfully',
+            'container_id': result['stdout'][:12] if result['stdout'] else None
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/containers/<container_id>/start', methods=['POST'])
+@require_auth
+def start_container(container_id):
+    """Start a container"""
+    result = docker_manager.start_container(container_id)
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'message': f'Container "{container_id}" started successfully'
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/containers/<container_id>/stop', methods=['POST'])
+@require_auth
+def stop_container(container_id):
+    """Stop a container"""
+    result = docker_manager.stop_container(container_id)
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'message': f'Container "{container_id}" stopped successfully'
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/containers/<container_id>/restart', methods=['POST'])
+@require_auth
+def restart_container(container_id):
+    """Restart a container"""
+    result = docker_manager.restart_container(container_id)
+    
+    if result['success']:
+        return jsonify({
+            'success': True,
+            'message': f'Container "{container_id}" restarted successfully'
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/containers/<container_id>', methods=['DELETE'])
+@require_auth
+def remove_container(container_id):
+    """Remove a container"""
+    force = request.args.get('force', 'false').lower() == 'true'
+    remove_volumes = request.args.get('remove_volumes', 'false').lower() == 'true'
+    
+    result = docker_manager.remove_container(
+        container_id=container_id,
+        force=force,
+        remove_volumes=remove_volumes
+    )
+    
+    if result['success']:
+        message = f'Container "{container_id}" removed successfully'
+        if 'warning' in result:
+            message += f' (Warning: {result["warning"]})'
+        
+        return jsonify({
+            'success': True,
+            'message': message
+        })
+    else:
+        return jsonify(result), 400
+
+@app.route('/api/postgresql/execute', methods=['POST'])
+@require_auth
+def execute_postgresql():
+    """Execute PostgreSQL query"""
+    data = request.get_json()
+    database = data.get('database')
+    query = data.get('query')
+    
+    if not database or not query:
+        return jsonify({
+            'success': False,
+            'error': 'Database and query are required'
+        }), 400
+    
+    # Execute query using psycopg2
+    try:
+        conn = get_db_connection()
+        if not conn:
+            return jsonify({
+                'success': False,
+                'error': 'Could not connect to database'
+            }), 500
+        
+        cursor = conn.cursor()
+        cursor.execute(query)
+        
+        if query.strip().upper().startswith('SELECT'):
+            results = cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description]
+            data = [dict(zip(columns, row)) for row in results]
+            result = {
+                'success': True,
+                'data': data,
+                'columns': columns,
+                'row_count': len(results)
+            }
+        else:
+            conn.commit()
+            result = {
+                'success': True,
+                'message': f'Query executed successfully. Rows affected: {cursor.rowcount}',
+                'rows_affected': cursor.rowcount
+            }
+        
+        cursor.close()
+        conn.close()
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# Initialize Docker manager
+docker_manager = DockerManager()
+
+if __name__ == '__main__':
+    print("Starting Not a cPanel server...")
+    print(f"Server: {SERVER_IP}")
+    print(f"User: {USERNAME}")
+    print(f"Access the control panel at: http://{SERVER_IP}:5000")
+    
+    # Initialize database
+    print("Initializing database...")
+    if init_database():
+        print("Database ready")
+    else:
+        print("Warning: Database initialization failed, some features may not work")
+    
+    # Initialize Docker manager
+    print("Initializing Docker manager...")
+    print(f"Found {len(docker_manager.containers)} existing containers")
+    
+    app.run(host='0.0.0.0', port=5000, debug=True)), 64):
+            return {'success': False, 'error': 'Invalid container ID'}
+        
+        result = self.run_command(["docker", "restart", container_id])
         if result['success']:
             self.refresh_containers()
         return result

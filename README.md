@@ -15,9 +15,10 @@
 git clone https://github.com/neofloppy/not_a_c_panel.git
 cd not_a_c_panel
 
-# Install Python3 and pip if not already installed
+# Install system dependencies (Python3, PostgreSQL dev packages, build tools)
 sudo apt update
-sudo apt install -y python3 python3-pip python3-venv
+sudo apt install -y python3 python3-pip python3-venv python3-dev build-essential
+sudo apt install -y postgresql postgresql-contrib libpq-dev
 
 # Create and activate virtual environment
 python3 -m venv venv
@@ -71,6 +72,41 @@ sudo apt install python3-venv
 ```
 After installing, retry the setup.
 
+**PostgreSQL dependency installation fails with `pg_config executable not found`**
+
+If you see an error like:
+```
+Error: pg_config executable not found.
+pg_config is required to build psycopg2 from source.
+```
+This means PostgreSQL development packages are missing. Install them:
+
+**Ubuntu/Debian:**
+```bash
+sudo apt update
+sudo apt install -y python3-dev build-essential postgresql postgresql-contrib libpq-dev
+```
+
+**CentOS/RHEL:**
+```bash
+sudo yum install -y python3-devel gcc postgresql postgresql-server postgresql-devel
+```
+
+**Fedora:**
+```bash
+sudo dnf install -y python3-devel gcc postgresql postgresql-server postgresql-devel
+```
+
+**Arch Linux:**
+```bash
+sudo pacman -Sy --noconfirm base-devel postgresql postgresql-libs
+```
+
+After installing these packages, retry:
+```bash
+pip install -r requirements.txt
+```
+
 ### Access the Control Panel
 - URL: `http://your-server-ip:5000` (as configured during installation)
 - Username: `admin`
@@ -99,7 +135,16 @@ After installing, retry the setup.
 - **Ubuntu Server** (18.04 LTS or newer)
 - **Docker** installed and running
 - **Python 3.6+** (installed during setup)
+- **PostgreSQL development packages** (installed during setup)
+- **Build tools** (gcc, make, etc. - installed during setup)
 - **Internet connection** for package installation
+
+### System Dependencies (Auto-installed)
+The installation process automatically installs these system packages:
+- `python3`, `python3-pip`, `python3-venv`, `python3-dev`
+- `build-essential` (gcc, make, libc6-dev)
+- `postgresql`, `postgresql-contrib`, `libpq-dev`
+- `git`
 
 ## 🔐 Login Credentials
 
