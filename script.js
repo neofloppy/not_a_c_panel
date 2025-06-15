@@ -234,7 +234,10 @@ function setupEventListeners() {
         const modal = document.getElementById('containerModal');
         if (event.target === modal) {
             closeModal();
-// Docker Install Button
+        }
+    });
+    
+    // Docker Install Button
     const installDockerBtn = document.getElementById('installDockerBtn');
     if (installDockerBtn) {
         installDockerBtn.addEventListener('click', installDocker);
@@ -263,8 +266,6 @@ function installDocker() {
         statusDiv.textContent = "❌ Error: " + error;
     });
 }
-        }
-    });
     
     // Enter key on login fields
     document.addEventListener('keypress', function(event) {
