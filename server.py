@@ -67,7 +67,7 @@ DB_CONFIG = {
 
 def load_secure_config():
     """Load configuration from secure INI file"""
-    global SERVER_IP, USERNAME, ADMIN_PASSWORD_HASH, DB_CONFIG
+    global SERVER_IP, USERNAME, ADMIN_PASSWORD_HASH, ADMIN_USERNAME, DB_CONFIG
     
     config_file = "config.ini"
     if os.path.exists(config_file):
@@ -79,10 +79,16 @@ def load_secure_config():
             if 'server' in config:
                 SERVER_IP = config.get('server', 'ip', fallback=SERVER_IP)
                 USERNAME = config.get('server', 'username', fallback=USERNAME)
+                ADMIN_USERNAME = USERNAME  # Use the same username for admin login
                 
             # Admin credentials
             if 'admin' in config:
-                ADMIN_PASSWORD_HASH = config.get('admin', 'password_hash', fallback=None)
+                password_hash = config.get('admin', 'password_hash', fallback=None)
+                # Only use the hash if it's not empty
+                if password_hash and password_hash.strip():
+                    ADMIN_PASSWORD_HASH = password_hash.strip()
+                else:
+                    ADMIN_PASSWORD_HASH = None
                 
             # Database configuration
             if 'database' in config:
@@ -139,7 +145,7 @@ def create_default_config(config_file: str):
 
 # Authentication configuration
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
-ADMIN_USERNAME = "admin"
+ADMIN_USERNAME = "admin"  # Default, will be updated from config
 SESSION_TIMEOUT = timedelta(hours=4)
 
 # Store active sessions with additional security info
@@ -575,7 +581,7 @@ def login():
         return jsonify({'success': False, 'error': 'Invalid input length'}), 400
     if not ADMIN_PASSWORD_HASH:
         logger.error("No admin password hash configured")
-        return jsonify({'success': False, 'error': 'Server configuration error'}), 500
+        return jsonify({'success': False, 'error': 'Admin password not configured. Please run: python run_secure.py'}), 500
     if username == ADMIN_USERNAME and check_password_hash(ADMIN_PASSWORD_HASH, password):
         if ip_address in failed_login_attempts:
             del failed_login_attempts[ip_address]

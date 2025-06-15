@@ -48,7 +48,8 @@ def load_or_create_config():
     # Get admin password
     password_hash = config.get('admin', 'password_hash', fallback=None)
     
-    if not password_hash or reconfigure == 'y':
+    # Check if password hash is empty or missing
+    if not password_hash or password_hash.strip() == '' or reconfigure == 'y':
         print("\n🔐 Setting up admin password...")
         while True:
             admin_password = getpass.getpass("Enter admin password (min 6 characters): ").strip()
@@ -306,20 +307,49 @@ def main():
     else:
         print("🏠 Server is only accessible locally")
     
-    print("⏹️  Press Ctrl+C to stop the server")
+    print("🖥️  Starting monitoring display...")
+    print("⏹️  Press Ctrl+C to stop both server and monitor")
     print("=" * 60)
     
-    # Import and run the server
+    # Import and start the server in a separate thread
     try:
         import server
+        import threading
+        import time
+        
         # Set production mode
         server.app.config['DEBUG'] = False
-        server.app.run(host=bind_host, port=5000, debug=False, threaded=True)
+        
+        # Start server in background thread
+        def run_server():
+            server.app.run(host=bind_host, port=5000, debug=False, threaded=True, use_reloader=False)
+        
+        server_thread = threading.Thread(target=run_server, daemon=True)
+        server_thread.start()
+        
+        # Give server a moment to start
+        time.sleep(2)
+        
+        # Start the watcher display
+        if os.path.exists('./watcher.sh'):
+            print("🎯 Launching monitoring display...")
+            time.sleep(1)
+            os.system('bash ./watcher.sh')
+        else:
+            print("⚠️  watcher.sh not found, server running without monitor")
+            print(f"🔗 Access the control panel at: http://{server_ip}:5000")
+            # Keep main thread alive
+            try:
+                while True:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                print("\n⏹️  Server stopped by user")
+                
     except ImportError:
         print("❌ ERROR: server.py not found")
         sys.exit(1)
     except KeyboardInterrupt:
-        print("\n⏹️  Server stopped by user")
+        print("\n⏹️  Server and monitor stopped by user")
     except Exception as e:
         print(f"❌ ERROR: {e}")
         sys.exit(1)

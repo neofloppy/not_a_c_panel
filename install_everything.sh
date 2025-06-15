@@ -163,28 +163,43 @@ pip install -r requirements.txt
 print_success "Python dependencies installed in venv."
 
 echo ""
-print_status "To start the backend server, run:"
-echo ". venv/bin/activate && python server.py"
-print_status "Then open your browser to the app and complete setup (including Docker/PostgreSQL) from the web interface."
-
-# Prompt to start server and watcher
+print_success "Installation complete!"
 echo ""
-printf "Do you want to start the backend server and watcher now? (y/n): "
-read START_NOW
-if [ "$START_NOW" = "y" ] || [ "$START_NOW" = "Y" ]; then
-    print_status "Starting backend server in background..."
-    nohup "$VENV_DIR/bin/python" server.py > server.log 2>&1 &
-    if [ -f watcher.sh ]; then
-        print_status "Starting watcher.sh in background..."
-        chmod +x watcher.sh
-        nohup ./watcher.sh > watcher.log 2>&1 &
-    else
-        print_warning "watcher.sh not found, skipping."
-    fi
-    print_success "Backend server and watcher started. Check server.log and watcher.log for output."
-else
-    print_status "You can start the backend server anytime with: . venv/bin/activate && python server.py"
-    print_status "And watcher (if needed) with: ./watcher.sh"
+print_status "🔐 NEXT STEPS:"
+echo "   1. cd $REPO_NAME"
+echo "   2. . venv/bin/activate"
+echo "   3. python run_secure.py"
+echo ""
+print_status "The secure setup will:"
+echo "   - Prompt you to set up admin credentials"
+echo "   - Configure database settings"
+echo "   - Set up firewall rules"
+echo "   - Start the secure server"
+echo ""
+print_status "Alternative: Start server directly (not recommended for first run):"
+echo "   python server.py"
+echo ""
+
+# Always run secure setup automatically
+print_status "Starting secure setup automatically..."
+echo ""
+
+# Check if running via pipe (curl | bash) - need to reopen stdin from terminal
+if [ ! -t 0 ]; then
+    print_status "Detected non-interactive mode (curl | bash)"
+    print_status "Reopening terminal input for secure setup..."
+    # Reopen stdin from the controlling terminal
+    exec < /dev/tty 2>/dev/null || {
+        print_error "Cannot access terminal for interactive setup"
+        print_status "Please run these commands manually:"
+        echo "   cd $REPO_NAME"
+        echo "   . venv/bin/activate" 
+        echo "   python run_secure.py"
+        exit 1
+    }
 fi
+
+# Run the secure setup
+"$VENV_DIR/bin/python" run_secure.py
 
 print_success "Bootstrap complete!"

@@ -8,7 +8,29 @@
 
 ## 🚀 Quick Start Installation
 
-### 🔒 Method 1: Secure Installation (Recommended)
+### 🚀 Method 1: One-Line Installation (Recommended)
+```bash
+curl -fsSL https://raw.githubusercontent.com/neofloppy/not_a_c_panel/master/install_everything.sh | bash
+```
+
+**What this does:**
+- ✅ Installs all system dependencies (Python3, PostgreSQL, Docker support)
+- ✅ Clones the repository and sets up virtual environment
+- ✅ Installs Python packages automatically
+- ✅ Launches secure setup for credentials configuration
+- ✅ Starts server with beautiful NEOFLOPPY monitoring display
+- ✅ **Complete setup in one command!**
+
+### ⚡ Method 2: Automated Installation
+```bash
+# Clone and run automated installer
+git clone https://github.com/neofloppy/not_a_c_panel.git
+cd not_a_c_panel
+chmod +x install_everything.sh
+./install_everything.sh
+```
+
+### 🔒 Method 3: Secure Manual Installation
 ```bash
 # Clone the repository
 git clone https://github.com/neofloppy/not_a_c_panel.git
@@ -34,30 +56,16 @@ pip install -r requirements.txt
 python run_secure.py
 ```
 
-### ⚡ Method 2: Automated Installation
-```bash
-# Clone and run automated installer
-git clone https://github.com/neofloppy/not_a_c_panel.git
-cd not_a_c_panel
-chmod +x install_everything.sh
-./install_everything.sh
-```
-
-### 🚀 Method 3: One-Line Installation
-```bash
-curl -fsSL https://raw.githubusercontent.com/neofloppy/not_a_c_panel/master/install_everything.sh | bash
-```
-
 ## 📋 What Happens During Setup
 
-When you run `python run_secure.py`, the script will:
+When you run the **One-Line Installation** or `python run_secure.py`, the script will:
 
 1. **Check Dependencies**: Verify Python version and required packages
 2. **Environment Setup**: Create necessary directories (nginx-configs, web-content, logs)
 3. **Configuration Prompts**: Ask you to configure:
    - **Server IP Address**: Your server's IP (default: 0.0.0.0 for external access)
    - **Admin Username**: Control panel username (default: admin)
-   - **Admin Password**: Control panel password (auto-generated if empty)
+   - **Admin Password**: Control panel password (secure input, hidden while typing)
    - **Database Settings**: PostgreSQL connection details
 4. **Firewall Configuration**: Automatically open required ports:
    - Port 5000: Main application
@@ -66,18 +74,26 @@ When you run `python run_secure.py`, the script will:
    - Port 5432: PostgreSQL
    - Ports 8000-8005: Container web services
 5. **Start Server**: Launch the secure web interface
+6. **🎯 Launch Monitor**: Automatically display the beautiful NEOFLOPPY monitoring interface
 
 ### First Run Configuration
 On first run, you'll see prompts like:
 ```
+🔐 Setting up admin password...
+Enter admin password (min 6 characters): [hidden input]
+Confirm admin password: [hidden input]
+✅ Password set successfully!
+
 Enter server IP (current: 0.0.0.0): [your-server-ip]
 Enter admin username (current: admin): [your-username]
-Enter admin password (leave empty to keep current): [your-password]
 Enter database host (current: localhost): 
-Enter database name (current: notacpanel): 
-Enter database user (current: notacpanel): 
-Enter database password (current: notacpanel123): 
 Configure firewall ports automatically? (Y/n): y
+
+🚀 Starting secure server...
+🖥️  Starting monitoring display...
+🎯 Launching monitoring display...
+
+[Beautiful NEOFLOPPY ASCII art appears with live monitoring]
 ```
 
 ### Subsequent Runs
@@ -86,6 +102,7 @@ On subsequent runs, the script will:
 - Ask if you want to reconfigure (y/N)
 - Ask about firewall configuration
 - Start the server with your saved settings
+- **Automatically display the NEOFLOPPY monitoring interface**
 
 ## 🔐 Access Information
 

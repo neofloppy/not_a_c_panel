@@ -1,0 +1,84 @@
+import curses
+import random
+import time
+
+ASCII_ART = r"""
+███╗   ██╗███████╗ ██████╗ ███████╗██╗      ██████╗ ██████╗ ██████╗ ██╗   ██╗
+████╗  ██║██╔════╝██╔═══██╗██╔════╝██║     ██╔═══██╗██╔══██╗██╔══██╗╚██╗ ██╔╝
+██╔██╗ ██║█████╗  ██║   ██║█████╗  ██║     ██║   ██║██████╔╝██████╔╝ ╚████╔╝ 
+██║╚██╗██║██╔══╝  ██║   ██║██╔══╝  ██║     ██║   ██║██╔═══╝ ██╔═══╝   ╚██╔╝  
+██║ ╚████║███████╗╚██████╔╝███████╗███████╗╚██████╔╝██║     ██║        ██║   
+╚═╝  ╚═══╝╚══════╝ ╚═════╝ ╚══════╝╚══════╝ ╚═════╝ ╚═╝     ╚═╝        ╚═╝   
+"""
+
+WHISPERS = [
+    "it sees you", "run.exe", "glitch in root", "404 soul not found",
+    "neofloppy awakens", "listening...", "recompiling flesh",
+    "terminal infected", "██ corrupted ██", "user compromised"
+]
+
+COLORS = [curses.COLOR_RED, curses.COLOR_GREEN, curses.COLOR_MAGENTA, curses.COLOR_CYAN, curses.COLOR_YELLOW]
+
+def creepy_terminal(stdscr):
+    curses.curs_set(0)
+    stdscr.nodelay(1)
+    curses.start_color()
+
+    for i, color in enumerate(COLORS, start=1):
+        curses.init_pair(i, color, curses.COLOR_BLACK)
+
+    height, width = stdscr.getmaxyx()
+    lines = ASCII_ART.strip("\n").splitlines()
+
+    art_height = len(lines)
+    log_height = 7
+    art_start_y = max(1, height - log_height - art_height - 1)
+    log_start_y = height - log_height
+
+    flicker_cycle = 0
+
+    try:
+        while True:
+            stdscr.erase()
+
+            # Flickering ASCII art with glitch effect
+            color_pair = curses.color_pair(random.randint(1, len(COLORS)))
+            for i, line in enumerate(lines):
+                glitched = ''.join(
+                    random.choice(['█', '░', '▓', line[j], ' '])
+                    if random.random() < 0.1 else line[j]
+                    for j in range(len(line))
+                )
+                stdscr.addstr(art_start_y + i, max(0, (width - len(line)) // 2), glitched, color_pair)
+
+            # Whisper occasionally
+            if flicker_cycle % 5 == 0:
+                msg = random.choice(WHISPERS)
+                stdscr.addstr(art_start_y + art_height + 1, random.randint(0, max(1, width - len(msg) - 1)), msg, curses.A_DIM | curses.A_BLINK)
+
+            # Draw log window border only (empty inside)
+            stdscr.attron(curses.color_pair(2))
+            stdscr.addstr(log_start_y - 1, 2, "== EVENT LOG ==")
+            stdscr.attroff(curses.color_pair(2))
+            stdscr.attron(curses.A_DIM)
+            stdscr.hline(log_start_y - 2, 0, "-", width)
+            stdscr.attroff(curses.A_DIM)
+
+            for y in range(log_start_y, height - 1):
+                stdscr.addstr(y, 0, "|")
+                stdscr.addstr(y, width - 1, "|")
+            stdscr.hline(height - 1, 0, "‾", width)
+
+            # You handle real logs in this space
+
+            stdscr.refresh()
+            flicker_cycle += 1
+            time.sleep(0.12)
+
+            if stdscr.getch() != -1:
+                break
+    except KeyboardInterrupt:
+        pass
+
+if __name__ == "__main__":
+    curses.wrapper(creepy_terminal)
