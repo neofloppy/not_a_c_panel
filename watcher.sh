@@ -118,11 +118,121 @@ ${cyan}██║ ╚████║███████╗╚██████
 ${cyan}╚═╝  ╚═══╝╚══════╝ ╚═════╝ ╚══════╝╚═╝  ╚═╝╚══════╝╚══════╝╚══════╝${reset}
 "
 
-# Global variable to track if animation has been shown
+# Global variables
 ANIMATION_SHOWN=false
+WATCHER_PID=$
+CLEANUP_DONE=false
 
 function log_message() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "$LOGFILE"
+}
+
+function cleanup_ports() {
+    if [ "$CLEANUP_DONE" = true ]; then
+        return
+    fi
+    
+    log_message "INFO: Starting graceful shutdown and port cleanup"
+    
+    # Kill processes using our monitored ports
+    local pids_killed=0
+    
+    # Find and terminate processes on APP_PORT
+    if command -v lsof >/dev/null 2>&1; then
+        local app_pids=$(lsof -ti:$APP_PORT 2>/dev/null)
+        if [ -n "$app_pids" ]; then
+            echo -e "\n${yellow}Terminating processes on port $APP_PORT...${reset}"
+            for pid in $app_pids; do
+                if kill -TERM "$pid" 2>/dev/null; then
+                    log_message "INFO: Sent SIGTERM to process $pid on port $APP_PORT"
+                    ((pids_killed++))
+                fi
+            done
+            
+            # Wait a moment for graceful shutdown
+            sleep 2
+            
+            # Force kill if still running
+            app_pids=$(lsof -ti:$APP_PORT 2>/dev/null)
+            if [ -n "$app_pids" ]; then
+                for pid in $app_pids; do
+                    if kill -KILL "$pid" 2>/dev/null; then
+                        log_message "WARNING: Force killed process $pid on port $APP_PORT"
+                        ((pids_killed++))
+                    fi
+                done
+            fi
+        fi
+    elif command -v netstat >/dev/null 2>&1; then
+        # Fallback using netstat
+        local app_pids=$(netstat -tlnp 2>/dev/null | grep ":$APP_PORT " | awk '{print $7}' | cut -d'/' -f1 | grep -v -)
+        if [ -n "$app_pids" ]; then
+            echo -e "\n${yellow}Terminating processes on port $APP_PORT...${reset}"
+            for pid in $app_pids; do
+                if kill -TERM "$pid" 2>/dev/null; then
+                    log_message "INFO: Sent SIGTERM to process $pid on port $APP_PORT"
+                    ((pids_killed++))
+                fi
+            done
+            sleep 2
+            # Force kill check
+            app_pids=$(netstat -tlnp 2>/dev/null | grep ":$APP_PORT " | awk '{print $7}' | cut -d'/' -f1 | grep -v -)
+            if [ -n "$app_pids" ]; then
+                for pid in $app_pids; do
+                    if kill -KILL "$pid" 2>/dev/null; then
+                        log_message "WARNING: Force killed process $pid on port $APP_PORT"
+                        ((pids_killed++))
+                    fi
+                done
+            fi
+        fi
+    fi
+    
+    # Clean up any zombie processes
+    if command -v pkill >/dev/null 2>&1; then
+        pkill -f "not_a_c_panel" 2>/dev/null || true
+        pkill -f "python.*5000" 2>/dev/null || true
+        pkill -f "node.*5000" 2>/dev/null || true
+    fi
+    
+    # Verify ports are free
+    sleep 1
+    local port_status=""
+    if command -v lsof >/dev/null 2>&1; then
+        if lsof -i:$APP_PORT >/dev/null 2>&1; then
+            port_status="STILL OCCUPIED"
+        else
+            port_status="FREE"
+        fi
+    else
+        port_status="UNKNOWN"
+    fi
+    
+    log_message "INFO: Port $APP_PORT status after cleanup: $port_status"
+    log_message "INFO: Terminated $pids_killed processes during cleanup"
+    
+    CLEANUP_DONE=true
+}
+
+function emergency_port_release() {
+    echo -e "\n${red}EMERGENCY: Forcing port release...${reset}"
+    log_message "CRITICAL: Emergency port release initiated"
+    
+    # Nuclear option - kill everything on our ports
+    if command -v fuser >/dev/null 2>&1; then
+        fuser -k $APP_PORT/tcp 2>/dev/null || true
+        fuser -k $DB_PORT/tcp 2>/dev/null || true
+    fi
+    
+    # Alternative method
+    if command -v ss >/dev/null 2>&1; then
+        local pids=$(ss -tlnp | grep ":$APP_PORT " | sed 's/.*pid=\([0-9]*\).*/\1/' | sort -u)
+        for pid in $pids; do
+            kill -KILL "$pid" 2>/dev/null || true
+        done
+    fi
+    
+    log_message "CRITICAL: Emergency port release completed"
 }
 
 function check_app_server() {
@@ -331,10 +441,49 @@ function display_status() {
     
     echo -e "${cyan}╚══════════════════════════════════════════════════════════════╝${reset}"
     echo ""
-    if [ "$ANIMATION_SHOWN" = true ]; then
-        echo -e "${cyan}Press Ctrl+C to stop NeoShell monitoring${reset}"
+    
+    # Port status section
+    echo -e "${magenta}╔══════════════════════════════════════════════════════════════╗${reset}"
+    echo -e "${magenta}║${white}                       PORT STATUS                           ${magenta}║${reset}"
+    echo -e "${magenta}╚══════════════════════════════════════════════════════════════╝${reset}"
+    
+    # Check port availability
+    local app_port_status="FREE"
+    local db_port_status="FREE"
+    
+    if command -v lsof >/dev/null 2>&1; then
+        if lsof -i:$APP_PORT >/dev/null 2>&1; then
+            app_port_status="OCCUPIED"
+        fi
+        if lsof -i:$DB_PORT >/dev/null 2>&1; then
+            db_port_status="OCCUPIED"
+        fi
+    elif command -v netstat >/dev/null 2>&1; then
+        if netstat -ln | grep ":$APP_PORT " >/dev/null 2>&1; then
+            app_port_status="OCCUPIED"
+        fi
+        if netstat -ln | grep ":$DB_PORT " >/dev/null 2>&1; then
+            db_port_status="OCCUPIED"
+        fi
+    fi
+    
+    if [ "$app_port_status" = "OCCUPIED" ]; then
+        echo -e "${green}●${reset} Port $APP_PORT: ${green}$app_port_status${reset} (Application)"
     else
-        echo -e "${gray}Press Ctrl+C to stop monitoring${reset}"
+        echo -e "${red}○${reset} Port $APP_PORT: ${red}$app_port_status${reset} (Application)"
+    fi
+    
+    if [ "$db_port_status" = "OCCUPIED" ]; then
+        echo -e "${green}●${reset} Port $DB_PORT: ${green}$db_port_status${reset} (Database)"
+    else
+        echo -e "${red}○${reset} Port $DB_PORT: ${red}$db_port_status${reset} (Database)"
+    fi
+    
+    echo ""
+    if [ "$ANIMATION_SHOWN" = true ]; then
+        echo -e "${cyan}Press Ctrl+C for graceful shutdown | Ctrl+\\ for emergency shutdown${reset}"
+    else
+        echo -e "${gray}Press Ctrl+C for graceful shutdown | Ctrl+\\ for emergency shutdown${reset}"
     fi
 }
 
@@ -360,11 +509,54 @@ function check_and_log() {
     fi
 }
 
-# Trap Ctrl+C
-trap 'echo -e "\n${cyan}NeoShell monitoring stopped. Goodbye!${reset}"; exit 0' INT
+function graceful_shutdown() {
+    echo -e "\n${yellow}Initiating graceful shutdown...${reset}"
+    log_message "INFO: Graceful shutdown initiated by user"
+    
+    # Stop the monitoring loop
+    cleanup_ports
+    
+    # Final status check
+    echo -e "${cyan}Port cleanup completed.${reset}"
+    echo -e "${cyan}NeoShell monitoring stopped. Goodbye!${reset}"
+    
+    log_message "INFO: NeoShell watcher shutdown completed"
+    exit 0
+}
+
+function emergency_shutdown() {
+    echo -e "\n${red}EMERGENCY SHUTDOWN TRIGGERED!${reset}"
+    log_message "CRITICAL: Emergency shutdown triggered"
+    
+    emergency_port_release
+    
+    echo -e "${red}Emergency shutdown completed.${reset}"
+    log_message "CRITICAL: Emergency shutdown completed"
+    exit 1
+}
+
+# Enhanced trap handlers
+trap 'graceful_shutdown' INT TERM
+trap 'emergency_shutdown' QUIT
 
 # Initial log entry
 log_message "INFO: Not a cPanel monitor started"
+
+# Check for port conflicts before starting
+echo -e "${yellow}Checking for port conflicts...${reset}"
+if command -v lsof >/dev/null 2>&1; then
+    if lsof -i:$APP_PORT >/dev/null 2>&1; then
+        echo -e "${red}WARNING: Port $APP_PORT is already in use!${reset}"
+        log_message "WARNING: Port $APP_PORT occupied at startup"
+        
+        read -p "Do you want to clean up ports before starting? (y/N): " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            cleanup_ports
+            echo -e "${green}Port cleanup completed.${reset}"
+        fi
+    fi
+fi
 
 # Play the epic melting animation first
 play_melting_animation
