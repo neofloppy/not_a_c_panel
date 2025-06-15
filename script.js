@@ -10,9 +10,31 @@ let isAuthenticated = false;
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
+    loadServerInfo();
     checkAuthentication();
     setupEventListeners();
 });
+
+async function loadServerInfo() {
+    try {
+        // Get server IP from window.location
+        const serverIP = window.location.hostname || 'localhost';
+        
+        // Update server info in login footer
+        const serverInfoEl = document.getElementById('serverInfo');
+        if (serverInfoEl) {
+            serverInfoEl.textContent = `Server: ${serverIP} | Ubuntu + Docker`;
+        }
+        
+        // Update header server info (will be set after login)
+        const headerServerIP = document.getElementById('headerServerIP');
+        if (headerServerIP) {
+            headerServerIP.textContent = `Server: ${serverIP}`;
+        }
+    } catch (error) {
+        console.error('Error loading server info:', error);
+    }
+}
 
 function checkAuthentication() {
     // Check if user is already authenticated (session storage)
@@ -103,6 +125,12 @@ async function handleLogin(event) {
             };
             sessionStorage.setItem('not_a_cpanel_auth', JSON.stringify(authData));
             
+            // Update header username
+            const headerUsername = document.getElementById('headerUsername');
+            if (headerUsername) {
+                headerUsername.textContent = `User: ${result.user}`;
+            }
+            
             // Show success and redirect
             showNotification('Login successful! Welcome to Not a cPanel', 'success');
             
@@ -112,7 +140,14 @@ async function handleLogin(event) {
             
         } else {
             // Failed login
-            loginError.textContent = result.error || 'Invalid credentials. Please try again.';
+            let errorMessage = result.error || 'Invalid credentials. Please try again.';
+            
+            // Special handling for password not configured error
+            if (errorMessage.includes('Admin password not configured')) {
+                errorMessage = 'Server not configured yet. Please run the setup script on the server first.';
+            }
+            
+            loginError.textContent = errorMessage;
             loginError.style.display = 'block';
             
             // Shake animation for error
