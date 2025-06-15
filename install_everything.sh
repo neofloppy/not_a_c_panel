@@ -161,25 +161,29 @@ print_status "Alternative: Start server directly (not recommended for first run)
 echo "   python3 server.py"
 echo ""
 
-# Always run secure setup automatically
-print_status "Starting secure setup automatically..."
-echo ""
-
-# Check if running via pipe (curl | bash) - need to reopen stdin from terminal
-if [ ! -t 0 ]; then
-    print_status "Detected non-interactive mode (curl | bash)"
-    print_status "Reopening terminal input for secure setup..."
-    # Reopen stdin from the controlling terminal
-    exec < /dev/tty 2>/dev/null || {
-        print_error "Cannot access terminal for interactive setup"
-        print_status "Please run these commands manually:"
-        echo "   cd $REPO_NAME"
-        echo "   python3 run_secure.py"
-        exit 1
-    }
+# Check if we can run interactive setup
+if [ -t 0 ] && [ -t 1 ]; then
+    # Interactive terminal available
+    print_status "Starting secure setup automatically..."
+    echo ""
+    python3 run_secure.py
+else
+    # Non-interactive mode (curl | bash) - provide manual instructions
+    print_status "🔐 SETUP REQUIRED:"
+    echo ""
+    echo "   The installation is complete, but you need to run the secure setup manually."
+    echo "   This is because the installer was run in non-interactive mode."
+    echo ""
+    print_status "To complete setup, run these commands:"
+    echo ""
+    echo "   cd $REPO_NAME"
+    echo "   python3 run_secure.py"
+    echo ""
+    print_status "This will:"
+    echo "   - Set up your admin username and password"
+    echo "   - Configure the database connection"
+    echo "   - Start the server with the NEOFLOPPY monitoring display"
+    echo ""
 fi
-
-# Run the secure setup
-python3 run_secure.py
 
 print_success "Bootstrap complete!"
