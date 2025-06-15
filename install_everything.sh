@@ -127,8 +127,8 @@ fi
 cd "$REPO_NAME"
 
 print_status "Installing Python dependencies globally..."
-pip3 install --upgrade pip
-pip3 install -r requirements.txt
+pip3 install --upgrade pip --break-system-packages
+pip3 install -r requirements.txt --break-system-packages
 
 print_success "Python dependencies installed globally."
 

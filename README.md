@@ -45,12 +45,14 @@ sudo apt install -y postgresql postgresql-contrib libpq-dev
 # CentOS/RHEL:
 # sudo yum install -y python3 python3-pip python3-devel gcc postgresql postgresql-server postgresql-devel
 
-# Install Python dependencies globally
-pip3 install -r requirements.txt
+# Install Python dependencies globally (production deployment)
+pip3 install -r requirements.txt --break-system-packages
 
 # Run secure startup (will configure everything)
 python3 run_secure.py
 ```
+
+> **Note**: The `--break-system-packages` flag is required on newer Ubuntu systems (22.04+) for production deployments where you want to install packages globally. This is safe for dedicated servers running only Not a cPanel.
 
 ## 📋 What Happens During Setup
 
