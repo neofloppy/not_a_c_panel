@@ -1,335 +1,386 @@
 # Not a cPanel - Docker Container Management
 
-🐳 A modern, web-based control panel for managing Docker containers on Ubuntu servers.
+🐳 A modern, web-based control panel for managing Docker containers with PostgreSQL database support.
 
-![Ubuntu](https://img.shields.io/badge/Ubuntu-Only-orange?style=for-the-badge&logo=ubuntu)
 ![Docker](https://img.shields.io/badge/Docker-Container%20Management-blue?style=for-the-badge&logo=docker)
 ![Security](https://img.shields.io/badge/Security-Authentication%20Required-green?style=for-the-badge&logo=shield)
 ![License](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)
 
-## 🚀 Ubuntu Installation
+## 🚀 Quick Start Installation
 
-### 🔒 Method 1: Secure Manual Installation (Recommended)
+### 🔒 Method 1: Secure Installation (Recommended)
 ```bash
 # Clone the repository
 git clone https://github.com/neofloppy/not_a_c_panel.git
 cd not_a_c_panel
 
-# Install system dependencies (Python3, PostgreSQL dev packages, build tools)
+# Install system dependencies
+# Ubuntu/Debian:
 sudo apt update
 sudo apt install -y python3 python3-pip python3-venv python3-dev build-essential
 sudo apt install -y postgresql postgresql-contrib libpq-dev
 
+# CentOS/RHEL:
+# sudo yum install -y python3 python3-pip python3-devel gcc postgresql postgresql-server postgresql-devel
+
 # Create and activate virtual environment
 python3 -m venv venv
-source venv/bin/activate
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-# Install dependencies
+# Install Python dependencies
 pip install -r requirements.txt
 
-# Run secure startup (will prompt for configuration)
+# Run secure startup (will configure everything)
 python run_secure.py
 ```
 
 ### ⚡ Method 2: Automated Installation
 ```bash
-# Clone the repository
+# Clone and run automated installer
 git clone https://github.com/neofloppy/not_a_c_panel.git
 cd not_a_c_panel
-
-# Run the automated installer (handles all dependencies)
 chmod +x install_everything.sh
 ./install_everything.sh
 ```
 
 ### 🚀 Method 3: One-Line Installation
 ```bash
-# Download and run the installer directly
 curl -fsSL https://raw.githubusercontent.com/neofloppy/not_a_c_panel/master/install_everything.sh | bash
 ```
 
-**During installation, you'll be prompted for:**
-- **Server IP Address**: Your server's public IP address
-- **Admin Username**: Username for the control panel
-- **Admin Password**: Password for the control panel
-- **PostgreSQL Host**: Database host (default: localhost)
-- **PostgreSQL Port**: Database port (default: 5432)
-- **PostgreSQL User**: Database user (default: postgres)
-- **PostgreSQL Password**: Database password (default: postgres)
-- **PostgreSQL Database Name**: Database name (default: notacpanel)
+## 📋 What Happens During Setup
 
-## 🛠️ Ubuntu Troubleshooting
+When you run `python run_secure.py`, the script will:
 
-**Python virtual environment creation fails with `ensurepip is not available`**
+1. **Check Dependencies**: Verify Python version and required packages
+2. **Environment Setup**: Create necessary directories (nginx-configs, web-content, logs)
+3. **Configuration Prompts**: Ask you to configure:
+   - **Server IP Address**: Your server's IP (default: 0.0.0.0 for external access)
+   - **Admin Username**: Control panel username (default: admin)
+   - **Admin Password**: Control panel password (auto-generated if empty)
+   - **Database Settings**: PostgreSQL connection details
+4. **Firewall Configuration**: Automatically open required ports:
+   - Port 5000: Main application
+   - Port 80: HTTP containers
+   - Port 443: HTTPS containers  
+   - Port 5432: PostgreSQL
+   - Ports 8000-8005: Container web services
+5. **Start Server**: Launch the secure web interface
 
-If you see an error like:
+### First Run Configuration
+On first run, you'll see prompts like:
 ```
-The virtual environment was not created successfully because ensurepip is not available.
-```
-On Ubuntu systems, install the venv package:
-```bash
-sudo apt install python3-venv
-```
-After installing, retry the setup.
-
-**PostgreSQL dependency installation fails with `pg_config executable not found`**
-
-If you see an error like:
-```
-Error: pg_config executable not found.
-pg_config is required to build psycopg2 from source.
-```
-This means PostgreSQL development packages are missing. Install them:
-
-**Ubuntu/Debian:**
-```bash
-sudo apt update
-sudo apt install -y python3-dev build-essential postgresql postgresql-contrib libpq-dev
+Enter server IP (current: 0.0.0.0): [your-server-ip]
+Enter admin username (current: admin): [your-username]
+Enter admin password (leave empty to keep current): [your-password]
+Enter database host (current: localhost): 
+Enter database name (current: notacpanel): 
+Enter database user (current: notacpanel): 
+Enter database password (current: notacpanel123): 
+Configure firewall ports automatically? (Y/n): y
 ```
 
-**CentOS/RHEL:**
-```bash
-sudo yum install -y python3-devel gcc postgresql postgresql-server postgresql-devel
-```
+### Subsequent Runs
+On subsequent runs, the script will:
+- Load existing configuration
+- Ask if you want to reconfigure (y/N)
+- Ask about firewall configuration
+- Start the server with your saved settings
 
-**Fedora:**
-```bash
-sudo dnf install -y python3-devel gcc postgresql postgresql-server postgresql-devel
-```
+## 🔐 Access Information
 
-**Arch Linux:**
-```bash
-sudo pacman -Sy --noconfirm base-devel postgresql postgresql-libs
-```
-
-After installing these packages, retry:
-```bash
-pip install -r requirements.txt
-```
-
-### Access the Control Panel
-- URL: `http://your-server-ip:5000` (as configured during installation)
-- Username: `admin`
-- Password: `[your-chosen-password]` (as set during installation)
-
-### Database Access
-- Host: `localhost:5432`
-- Database: `notacpanel`
-- Username: `notacpanel`
-- Password: `[your-chosen-db-password]` (as set during installation)
+After successful setup:
+- **URL**: `http://your-server-ip:5000`
+- **Username**: As configured during setup (default: admin)
+- **Password**: As set during setup
 
 ## 🌟 Features
 
-- **Dashboard**: Overview of all Docker containers and system resources
-- **Container Management**: Start, stop, restart, and monitor Docker containers
-- **Nginx Configuration**: Edit and manage Nginx configurations for each container
-- **PostgreSQL Management**: Install, configure, and manage PostgreSQL database server
-- **Database Operations**: Create/drop databases, manage users, execute SQL queries
-- **Real-time Monitoring**: View CPU, memory, and network usage for containers
-- **Log Viewer**: Access and follow container logs in real-time
-- **Terminal Access**: Execute commands on the host system or inside containers
-- **Responsive Design**: Works on desktop and mobile devices
-
-## 📋 Ubuntu Requirements
-
-- **Ubuntu Server** (18.04 LTS or newer)
-- **Docker** installed and running
-- **Python 3.6+** (installed during setup)
-- **PostgreSQL development packages** (installed during setup)
-- **Build tools** (gcc, make, etc. - installed during setup)
-- **Internet connection** for package installation
-
-### System Dependencies (Auto-installed)
-The installation process automatically installs these system packages:
-- `python3`, `python3-pip`, `python3-venv`, `python3-dev`
-- `build-essential` (gcc, make, libc6-dev)
-- `postgresql`, `postgresql-contrib`, `libpq-dev`
-- `git`
-
-## 🔐 Login Credentials
-
-The control panel is protected by authentication. Credentials are configured during installation:
-
-- **Username**: Set during secure installation
-- **Password**: Set during secure installation (or auto-generated)
-
-> **Security Note**: Use the secure installation method (`run_secure.py`) to set strong credentials. Never use default passwords in production.
-
-## Usage
-
-### Dashboard
-- View overview of all containers and their status
-- Monitor system resources (CPU, memory, disk usage)
-- Quick access to common actions
-
 ### Container Management
-- **Start/Stop/Restart**: Control individual containers or all at once
-- **View Details**: Click on any container to see detailed information
-- **Execute Shell**: Access container shell directly from the interface
+- **Dashboard**: Overview of all Docker containers and system status
+- **Container Control**: Start, stop, restart, and monitor containers
+- **Real-time Monitoring**: CPU, memory, and network usage
+- **Log Viewer**: Access container logs in real-time
+- **Shell Access**: Execute commands inside containers
 
-### Nginx Management
-- **Configuration Editor**: Edit Nginx configurations with syntax highlighting
-- **Test Configuration**: Validate Nginx configs before applying
-- **Reload Nginx**: Apply configuration changes without restarting containers
+### Web Server Management
+- **Nginx Configuration**: Edit and manage Nginx configs for each container
+- **Auto-Configuration**: Automatic setup for new containers
+- **Port Management**: Automatic port assignment and conflict resolution
+- **SSL/HTTPS Support**: Configure secure connections
 
-### PostgreSQL Management
-- **Installation**: One-click PostgreSQL server installation
-- **Service Control**: Start, stop, and restart PostgreSQL service
-- **Database Management**: Create, drop, and manage databases
-- **User Management**: Create users, set permissions, change passwords
-- **SQL Console**: Execute SQL queries with real-time results
-- **Connection Info**: Get connection strings for various programming languages
+### Database Management
+- **PostgreSQL Integration**: Full PostgreSQL server management
+- **Database Operations**: Create/drop databases, manage users
+- **SQL Console**: Execute queries with real-time results
+- **Connection Management**: Get connection strings for applications
 
-### Monitoring
-- **Real-time Stats**: View CPU, memory, and network usage
-- **Auto-refresh**: Enable automatic updates every 5 seconds
-- **Historical Data**: Track resource usage over time
+### Security Features
+- **Authentication**: Secure login system with session management
+- **Rate Limiting**: Protection against brute force attacks
+- **Input Validation**: Sanitized command execution
+- **Firewall Integration**: Automatic port configuration
+- **Secure Configuration**: Encrypted password storage
 
-### Logs
-- **Container Logs**: View logs from any container
-- **Follow Mode**: Continuously stream new log entries
-- **Search and Filter**: Find specific log entries
+## 🛠️ System Requirements
 
-### Terminal
-- **Host Terminal**: Execute commands on the Ubuntu server
-- **Container Shell**: Access bash/sh inside any running container
-- **Command History**: Previous commands are remembered
+### Minimum Requirements
+- **Operating System**: Linux (Ubuntu 18.04+), Windows 10+, macOS 10.14+
+- **Python**: 3.8 or higher
+- **Memory**: 512MB RAM minimum, 1GB recommended
+- **Storage**: 1GB free space
+- **Network**: Internet connection for initial setup
 
-## API Endpoints
+### Supported Platforms
+- ✅ **Ubuntu/Debian**: Full support with UFW firewall
+- ✅ **CentOS/RHEL/Fedora**: Full support with iptables
+- ✅ **Windows**: Full support with Windows Firewall
+- ✅ **macOS**: Basic support (manual firewall configuration)
 
-The backend provides a REST API for all operations:
+### Dependencies (Auto-installed)
+- Flask (web framework)
+- psycopg2 (PostgreSQL adapter)
+- Flask-Limiter (rate limiting)
+- Flask-CORS (cross-origin requests)
+- Werkzeug (security utilities)
 
-### Containers
-- `GET /api/containers` - List all containers
-- `POST /api/containers/{id}/start` - Start container
-- `POST /api/containers/{id}/stop` - Stop container
-- `POST /api/containers/{id}/restart` - Restart container
-- `GET /api/containers/{id}/logs` - Get container logs
-- `POST /api/containers/{id}/exec` - Execute command in container
+## 🔧 Configuration
 
-### Nginx Management
-- `GET /api/containers/{id}/nginx/config` - Get Nginx config
-- `POST /api/containers/{id}/nginx/config` - Update Nginx config
-- `POST /api/containers/{id}/nginx/reload` - Reload Nginx
-- `POST /api/containers/{id}/nginx/test` - Test Nginx config
+### Configuration File
+Settings are stored in `config.ini`:
+```ini
+[server]
+ip = 0.0.0.0
+username = admin
 
-### PostgreSQL Management
-- `GET /api/postgresql/status` - Get PostgreSQL installation and service status
-- `POST /api/postgresql/install` - Install PostgreSQL server
-- `POST /api/postgresql/start` - Start PostgreSQL service
-- `POST /api/postgresql/stop` - Stop PostgreSQL service
-- `POST /api/postgresql/restart` - Restart PostgreSQL service
-- `GET /api/postgresql/databases` - List all databases
-- `POST /api/postgresql/databases` - Create new database
-- `DELETE /api/postgresql/databases/{name}` - Drop database
-- `GET /api/postgresql/users` - List all database users
-- `POST /api/postgresql/users` - Create new user
-- `DELETE /api/postgresql/users/{username}` - Drop user
-- `POST /api/postgresql/users/{username}/password` - Change user password
-- `POST /api/postgresql/execute` - Execute SQL query
+[admin]
+password_hash = [encrypted-password-hash]
 
-### System
-- `GET /api/system/info` - Get system information
-- `POST /api/system/command` - Execute system command
+[database]
+host = localhost
+database = notacpanel
+user = notacpanel
+password = notacpanel123
+port = 5432
 
-## Configuration
-
-### Automatic Configuration
-Configuration is handled automatically during installation. The installer creates a `config.py` file with your settings:
-
-```python
-SERVER_IP = "your-server-ip"     # Set during installation
-USERNAME = "your-username"       # Set during installation  
-ADMIN_PASSWORD = "your-password" # Set during installation
+[security]
+debug = False
+force_https = False
+session_timeout_hours = 4
+max_login_attempts = 5
+lockout_duration_minutes = 15
 ```
 
-### Manual Configuration Changes
-To change configuration after installation:
-1. Edit `config.py` with your new values
-2. Run `python3 update-templates.py` to update interface files
-3. Restart the control panel: `python3 server.py`
-
-### Docker Compose
-Modify `docker-compose.yml` to customize:
-- Container names
-- Port mappings
-- Volume mounts
-- Nginx configurations
-
-### Security
-The application includes basic security measures:
-- Command whitelist for system execution
-- Input validation
-- CORS protection
-
-For production use, consider adding:
-- Authentication/authorization
-- HTTPS/SSL certificates
-- Firewall rules
-- Rate limiting
-
-## File Structure
-
-```
-not_a_c_panel/
-├── index.html          # Main application interface
-├── styles.css          # Application styling
-├── script.js           # Frontend JavaScript
-├── server.py           # Backend Flask server
-├── docker-compose.yml  # Docker container definitions
-├── README.md           # This file
-└── nginx-configs/      # Nginx configuration files
-    ├── web-01/
-    ├── web-02/
-    ├── ...
-    └── proxy-01/
+### Reconfiguration
+To change settings after initial setup:
+```bash
+python run_secure.py
+# When prompted: "Reconfigure settings? (y/N):" type 'y'
 ```
 
-## Troubleshooting
+### Manual Configuration
+You can also edit `config.ini` directly, then restart the server.
+
+## 🚨 Troubleshooting
 
 ### Common Issues
 
-1. **Containers not showing up**
-   - Ensure Docker is running: `sudo systemctl status docker`
-   - Check container status: `docker ps -a`
+**1. "Python 3.8+ is required for security reasons"**
+```bash
+# Update Python on Ubuntu:
+sudo apt update
+sudo apt install python3.8 python3.8-venv python3.8-dev
 
-2. **Permission denied errors**
-   - Add user to docker group: `sudo usermod -aG docker $USER`
-   - Restart session or run: `newgrp docker`
+# Create venv with specific version:
+python3.8 -m venv venv
+```
 
-3. **Port conflicts**
-   - Check if ports are in use: `netstat -tulpn | grep :5000`
-   - Modify port in `server.py` if needed
+**2. "psycopg2 not found" or "pg_config executable not found"**
+```bash
+# Ubuntu/Debian:
+sudo apt install python3-dev build-essential libpq-dev postgresql-client
 
-4. **Nginx configuration errors**
-   - Test config manually: `docker exec <container> nginx -t`
-   - Check container logs: `docker logs <container>`
+# CentOS/RHEL:
+sudo yum install python3-devel gcc postgresql-devel
 
-### Logs and Debugging
+# Then reinstall:
+pip install psycopg2-binary
+```
 
-- Application logs: Check terminal where `server.py` is running
-- Container logs: Use the log viewer in the interface or `docker logs`
-- System logs: `/var/log/syslog` or `journalctl -u docker`
+**3. "Permission denied" for firewall configuration**
+```bash
+# Linux: Run with sudo for firewall access
+sudo python run_secure.py
 
-## Contributing
+# Windows: Run Command Prompt as Administrator
+```
+
+**4. "Port 5000 already in use"**
+```bash
+# Find what's using the port:
+netstat -tulpn | grep :5000
+# Or on Windows:
+netstat -ano | findstr :5000
+
+# Kill the process or change port in server.py
+```
+
+**5. "Docker not found"**
+```bash
+# Install Docker:
+# Ubuntu:
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+sudo usermod -aG docker $USER
+
+# Restart session or run:
+newgrp docker
+```
+
+### Firewall Issues
+
+**Linux (UFW not working):**
+```bash
+# Manual iptables rules:
+sudo iptables -A INPUT -p tcp --dport 5000 -j ACCEPT
+sudo iptables -A INPUT -p tcp --dport 80 -j ACCEPT
+sudo iptables -A INPUT -p tcp --dport 443 -j ACCEPT
+sudo iptables -A INPUT -p tcp --dport 5432 -j ACCEPT
+
+# Save rules (Ubuntu):
+sudo iptables-save > /etc/iptables/rules.v4
+```
+
+**Windows (Firewall rules not applying):**
+```cmd
+REM Run as Administrator:
+netsh advfirewall firewall add rule name="Not-a-cPanel-5000" dir=in action=allow protocol=TCP localport=5000
+netsh advfirewall firewall add rule name="Not-a-cPanel-80" dir=in action=allow protocol=TCP localport=80
+netsh advfirewall firewall add rule name="Not-a-cPanel-443" dir=in action=allow protocol=TCP localport=443
+```
+
+### Database Connection Issues
+```bash
+# Check PostgreSQL status:
+sudo systemctl status postgresql
+
+# Start PostgreSQL:
+sudo systemctl start postgresql
+
+# Create database manually:
+sudo -u postgres createdb notacpanel
+sudo -u postgres createuser notacpanel
+sudo -u postgres psql -c "ALTER USER notacpanel PASSWORD 'notacpanel123';"
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE notacpanel TO notacpanel;"
+```
+
+## 📊 API Documentation
+
+### Authentication
+All API endpoints require authentication via session cookies.
+
+### Container Endpoints
+- `GET /api/containers` - List all containers
+- `POST /api/containers` - Create new container
+- `POST /api/containers/{id}/start` - Start container
+- `POST /api/containers/{id}/stop` - Stop container
+- `POST /api/containers/{id}/restart` - Restart container
+- `DELETE /api/containers/{id}` - Remove container
+
+### Database Endpoints
+- `POST /api/postgresql/execute` - Execute SQL query
+- `GET /api/postgresql/status` - Get database status
+
+### System Endpoints
+- `POST /api/login` - Authenticate user
+- `POST /api/logout` - End session
+
+## 🔒 Security Considerations
+
+### Production Deployment
+For production use, consider:
+
+1. **HTTPS/SSL**: Enable SSL certificates
+2. **Reverse Proxy**: Use Nginx/Apache as reverse proxy
+3. **Firewall**: Restrict access to necessary ports only
+4. **Updates**: Keep system and dependencies updated
+5. **Monitoring**: Implement logging and monitoring
+6. **Backups**: Regular database and configuration backups
+
+### Security Features
+- Password hashing with PBKDF2
+- Session management with timeouts
+- Rate limiting on login attempts
+- Input validation and sanitization
+- CORS protection
+- Command execution restrictions
+
+## 📁 File Structure
+
+```
+not_a_c_panel/
+├── run_secure.py       # Secure startup script
+├── server.py           # Main Flask application
+├── config.ini          # Configuration file (created on first run)
+├── index.html          # Web interface
+├── styles.css          # Application styling
+├── script.js           # Frontend JavaScript
+├── requirements.txt    # Python dependencies
+├── install_everything.sh # Automated installer
+├── nginx-configs/      # Nginx configuration files
+├── web-content/        # Web content for containers
+├── logs/              # Application logs
+└── README.md          # This file
+```
+
+## 🤝 Contributing
 
 1. Fork the repository
-2. Create a feature branch
+2. Create a feature branch: `git checkout -b feature-name`
 3. Make your changes
 4. Test thoroughly
 5. Submit a pull request
 
-## License
+## 📄 License
 
-This project is open source and available under the MIT License.
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-## Support
+## 🆘 Support
 
-For issues and questions:
-1. Check the troubleshooting section
-2. Review Docker and system logs
-3. Create an issue in the repository
+For help and support:
+
+1. **Check this README** for common solutions
+2. **Review logs** in the terminal where the server is running
+3. **Check system logs**: `/var/log/syslog` (Linux) or Event Viewer (Windows)
+4. **Create an issue** on GitHub with:
+   - Your operating system
+   - Python version (`python --version`)
+   - Error messages
+   - Steps to reproduce
+
+## 🎯 Quick Commands Reference
+
+```bash
+# Start the application
+python run_secure.py
+
+# Reconfigure settings
+python run_secure.py
+# Then answer 'y' to "Reconfigure settings?"
+
+# Check if server is running
+curl http://localhost:5000
+
+# View application logs
+tail -f logs/not_a_cpanel.log
+
+# Check Docker containers
+docker ps -a
+
+# Test database connection
+psql -h localhost -U notacpanel -d notacpanel
+```
 
 ---
 
-**Note**: This is a basic control panel for demonstration purposes. For production use, implement proper security measures, authentication, and monitoring.
+**🐳 Not a cPanel** - Making container management simple and secure!

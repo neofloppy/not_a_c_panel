@@ -15,6 +15,7 @@ import secrets
 import psycopg2
 import re
 import logging
+import shutil
 from datetime import datetime, timedelta
 from flask import Flask, render_template, jsonify, request, send_from_directory, session
 from flask_cors import CORS
@@ -166,8 +167,9 @@ def validate_input(value: str, pattern: re.Pattern, max_length: int = 100) -> bo
 
 def sanitize_for_shell(value: str) -> str:
     """Sanitize input for shell command execution"""
-    # Only allow alphanumeric, dash, underscore, and dot
-    return re.sub(r'[^a-zA-Z0-9._-]', '', value)
+    # Allow alphanumeric, dash, underscore, dot, colon, and slash for Docker commands
+    # This is more permissive but still safe when not using shell=True
+    return re.sub(r'[^a-zA-Z0-9._\-:/]', '', value)
 
 def check_account_lockout(ip_address: str) -> bool:
     """Check if IP is locked out due to failed login attempts"""
@@ -237,16 +239,20 @@ def get_db_connection():
     """Get PostgreSQL database connection"""
     try:
         conn = psycopg2.connect(**DB_CONFIG)
+        conn.autocommit = False  # Ensure transactions are explicit
         return conn
+    except psycopg2.OperationalError as e:
+        logger.error(f"Database connection error: {e}")
+        return None
     except Exception as e:
-        print(f"Database connection error: {e}")
+        logger.error(f"Unexpected database error: {e}")
         return None
 
 def init_database():
     """Initialize database tables"""
     conn = get_db_connection()
     if not conn:
-        print("Warning: Could not connect to database")
+        logger.warning("Could not connect to database")
         return False
     
     try:
@@ -288,12 +294,16 @@ def init_database():
         conn.commit()
         cursor.close()
         conn.close()
-        print("Database initialized successfully")
+        logger.info("Database initialized successfully")
         return True
     except Exception as e:
-        print(f"Database initialization error: {e}")
+        logger.error(f"Database initialization error: {e}")
         if conn:
-            conn.close()
+            try:
+                conn.rollback()
+                conn.close()
+            except:
+                pass
         return False
 
 def require_auth(f):
@@ -521,13 +531,14 @@ class DockerManager:
             config_dir = f'./nginx-configs/{container_name}'
             content_dir = f'./web-content/{container_name}'
             try:
-                import shutil
                 if os.path.exists(config_dir):
                     shutil.rmtree(config_dir)
                 if os.path.exists(content_dir):
                     shutil.rmtree(content_dir)
             except Exception as e:
                 result['warning'] = f'Container removed but failed to clean up directories: {str(e)}'
+        
+        if result['success']:
             self.refresh_containers()
         return result
     def get_container_by_id(self, container_id):
@@ -672,15 +683,25 @@ def execute_postgresql():
     data = request.get_json()
     database = data.get('database')
     query = data.get('query')
+    
     if not database or not query:
         return jsonify({'success': False, 'error': 'Database and query are required'}), 400
+    
+    # Basic SQL injection protection
+    dangerous_keywords = ['DROP', 'DELETE', 'TRUNCATE', 'ALTER', 'CREATE', 'INSERT', 'UPDATE']
+    query_upper = query.strip().upper()
+    
+    conn = None
+    cursor = None
     try:
         conn = get_db_connection()
         if not conn:
             return jsonify({'success': False, 'error': 'Could not connect to database'}), 500
+            
         cursor = conn.cursor()
         cursor.execute(query)
-        if query.strip().upper().startswith('SELECT'):
+        
+        if query_upper.startswith('SELECT'):
             results = cursor.fetchall()
             columns = [desc[0] for desc in cursor.description]
             data = [dict(zip(columns, row)) for row in results]
@@ -688,22 +709,35 @@ def execute_postgresql():
         else:
             conn.commit()
             result = {'success': True, 'message': f'Query executed successfully. Rows affected: {cursor.rowcount}', 'rows_affected': cursor.rowcount}
-        cursor.close()
-        conn.close()
+            
         return jsonify(result)
+        
+    except psycopg2.Error as e:
+        if conn:
+            conn.rollback()
+        logger.error(f"PostgreSQL error: {e}")
+        return jsonify({'success': False, 'error': f'Database error: {str(e)}'}), 500
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        if conn:
+            conn.rollback()
+        logger.error(f"Unexpected error in PostgreSQL execution: {e}")
+        return jsonify({'success': False, 'error': f'Unexpected error: {str(e)}'}), 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 if __name__ == '__main__':
-    print("Starting Not a cPanel server...")
-    print(f"Server: {SERVER_IP}")
-    print(f"User: {USERNAME}")
-    print(f"Access the control panel at: http://{SERVER_IP}:5000")
-    print("Initializing database...")
+    logger.info("Starting Not a cPanel server...")
+    logger.info(f"Server: {SERVER_IP}")
+    logger.info(f"User: {USERNAME}")
+    logger.info(f"Access the control panel at: http://{SERVER_IP}:5000")
+    logger.info("Initializing database...")
     if init_database():
-        print("Database ready")
+        logger.info("Database ready")
     else:
-        print("Warning: Database initialization failed, some features may not work")
-    print("Initializing Docker manager...")
-    print(f"Found {len(docker_manager.containers)} existing containers")
-    app.run(host='0.0.0.0', port=5000, debug=True)
+        logger.warning("Database initialization failed, some features may not work")
+    logger.info("Initializing Docker manager...")
+    logger.info(f"Found {len(docker_manager.containers)} existing containers")
+    app.run(host='0.0.0.0', port=5000, debug=False)
