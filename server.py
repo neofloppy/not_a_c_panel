@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 limiter = Limiter(
     app=app,
     key_func=get_remote_address,
-    default_limits=["100 per hour"]
+    default_limits=[]  # No default limits, apply only to specific endpoints
 )
 
 # Configuration - Load from secure config file
@@ -562,6 +562,15 @@ def index():
 @app.route('/<path:filename>')
 def serve_static(filename):
     return send_from_directory('.', filename)
+
+@app.route('/api/clear-limits')
+def clear_limits():
+    """Clear rate limits for debugging"""
+    try:
+        limiter.reset()
+        return jsonify({'success': True, 'message': 'Rate limits cleared'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/login', methods=['POST'])
 @limiter.limit("5 per minute")
