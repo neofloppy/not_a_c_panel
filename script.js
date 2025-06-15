@@ -266,17 +266,16 @@ function installDocker() {
         statusDiv.textContent = "❌ Error: " + error;
     });
 }
-    
-    // Enter key on login fields
-    document.addEventListener('keypress', function(event) {
-        if (event.key === 'Enter' && document.getElementById('loginScreen').style.display !== 'none') {
-            const loginForm = document.getElementById('loginForm');
-            if (loginForm) {
-                handleLogin(event);
-            }
+
+// Enter key on login fields setup
+document.addEventListener('keypress', function(event) {
+    if (event.key === 'Enter' && document.getElementById('loginScreen').style.display !== 'none') {
+        const loginForm = document.getElementById('loginForm');
+        if (loginForm) {
+            handleLogin(event);
         }
-    });
-}
+    }
+});
 
 function generateMockContainers() {
     const containerNames = [
