@@ -19,11 +19,21 @@ print_warning() { echo "[WARNING] $1"; }
 
 print_status "Checking for Python 3, pip, git, and PostgreSQL development packages..."
 
+# Check and fix system time if needed (common issue with VMs)
+if command -v timedatectl >/dev/null 2>&1; then
+    print_status "Checking system time..."
+    if ! timedatectl status | grep -q "synchronized: yes"; then
+        print_status "Synchronizing system time..."
+        sudo timedatectl set-ntp true 2>/dev/null || true
+        sleep 2
+    fi
+fi
+
 # Install Python3, pip, git, PostgreSQL dev packages if missing
 if ! command -v python3 >/dev/null 2>&1; then
     print_status "Python3 not found. Installing..."
     if command -v apt-get >/dev/null 2>&1; then
-        sudo apt-get update
+        sudo apt-get update --allow-releaseinfo-change || sudo apt-get update
         sudo apt-get install -y python3 python3-pip python3-dev build-essential
         sudo apt-get install -y postgresql postgresql-contrib libpq-dev
     elif command -v yum >/dev/null 2>&1; then
@@ -48,7 +58,7 @@ print_status "Ensuring PostgreSQL development packages are installed..."
 if command -v apt-get >/dev/null 2>&1; then
     if ! dpkg -l | grep -q libpq-dev; then
         print_status "Installing PostgreSQL development packages..."
-        sudo apt-get update
+        sudo apt-get update --allow-releaseinfo-change || sudo apt-get update
         sudo apt-get install -y python3-dev build-essential
         sudo apt-get install -y postgresql postgresql-contrib libpq-dev
     fi
@@ -81,6 +91,7 @@ fi
 if ! command -v pip3 >/dev/null 2>&1; then
     print_status "pip3 not found. Installing..."
     if command -v apt-get >/dev/null 2>&1; then
+        sudo apt-get update --allow-releaseinfo-change || sudo apt-get update
         sudo apt-get install -y python3-pip
     elif command -v yum >/dev/null 2>&1; then
         sudo yum install -y python3-pip
@@ -99,6 +110,7 @@ fi
 if ! command -v git >/dev/null 2>&1; then
     print_status "git not found. Installing..."
     if command -v apt-get >/dev/null 2>&1; then
+        sudo apt-get update --allow-releaseinfo-change || sudo apt-get update
         sudo apt-get install -y git
     elif command -v yum >/dev/null 2>&1; then
         sudo yum install -y git

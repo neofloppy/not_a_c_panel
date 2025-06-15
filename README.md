@@ -54,6 +54,13 @@ python3 run_secure.py
 
 > **Note**: The `--break-system-packages` flag is required on newer Ubuntu systems (22.04+) for production deployments where you want to install packages globally. This is safe for dedicated servers running only Not a cPanel.
 
+### 🕐 System Clock Issues
+If you encounter repository errors about "Release file is not valid yet", your system clock may be incorrect. Fix with:
+```bash
+sudo timedatectl set-ntp true
+sudo apt-get update --allow-releaseinfo-change
+```
+
 ## 📋 What Happens During Setup
 
 When you run the **One-Line Installation** or `python run_secure.py`, the script will:
