@@ -133,7 +133,9 @@ function display_status() {
     echo -e "${gray}System Uptime: $(get_uptime) | Last Check: $(date '+%H:%M:%S')${reset}"
     echo ""
     
-    # Log window
+    # Log window - The box is exactly 64 characters wide
+    # ╔══════════════════════════════════════════════════════════════╗ = 64 chars
+    # ║ + content (62 chars) + ║ = 64 chars total
     echo -e "${cyan}╔══════════════════════════════════════════════════════════════╗${reset}"
     echo -e "${cyan}║${white}                        EVENT LOG                            ${cyan}║${reset}"
     echo -e "${cyan}╠══════════════════════════════════════════════════════════════╣${reset}"
@@ -142,43 +144,46 @@ function display_status() {
     local log_content=$(get_recent_logs)
     local line_count=0
     
+    # Process each log line
     while IFS= read -r line && [ $line_count -lt $LOG_LINES ]; do
         if [ -n "$line" ]; then
-            # Truncate line if too long (60 chars to fit in box)
-            local display_line=$(echo "$line" | cut -c1-60)
-            local line_length=${#display_line}
-            local padding_length=$((60 - line_length))
-            local padding=""
-            
-            # Create padding if needed
-            if [ $padding_length -gt 0 ]; then
-                padding=$(printf "%*s" $padding_length "")
+            # Ensure line is exactly 62 characters (to fit perfectly in the box)
+            local display_line
+            if [ ${#line} -gt 62 ]; then
+                display_line="${line:0:62}"
+            else
+                display_line="$line"
+                # Add padding to make it exactly 62 characters
+                local padding_needed=$((62 - ${#line}))
+                if [ $padding_needed -gt 0 ]; then
+                    display_line="$line$(printf "%*s" $padding_needed "")"
+                fi
             fi
             
             # Add color based on log level
             if [[ $line == *"WARNING"* ]]; then
-                echo -e "${cyan}║${yellow}$display_line${reset}$padding${cyan}║${reset}"
+                echo -e "${cyan}║${yellow}$display_line${reset}${cyan}║${reset}"
             elif [[ $line == *"ERROR"* ]]; then
-                echo -e "${cyan}║${red}$display_line${reset}$padding${cyan}║${reset}"
+                echo -e "${cyan}║${red}$display_line${reset}${cyan}║${reset}"
             elif [[ $line == *"INFO"* ]]; then
-                echo -e "${cyan}║${green}$display_line${reset}$padding${cyan}║${reset}"
+                echo -e "${cyan}║${green}$display_line${reset}${cyan}║${reset}"
             else
-                echo -e "${cyan}║${gray}$display_line${reset}$padding${cyan}║${reset}"
+                echo -e "${cyan}║${gray}$display_line${reset}${cyan}║${reset}"
             fi
         else
-            # Empty line
-            echo -e "${cyan}║$(printf '%*s' 60 '')║${reset}"
+            # Empty line with exactly 62 spaces
+            echo -e "${cyan}║$(printf "%*s" 62 "")║${reset}"
         fi
         ((line_count++))
     done <<< "$log_content"
     
     # Fill remaining lines if needed
     while [ $line_count -lt $LOG_LINES ]; do
-        echo -e "${cyan}║$(printf '%*s' 60 '')║${reset}"
+        echo -e "${cyan}║$(printf "%*s" 62 "")║${reset}"
         ((line_count++))
     done
     
-    echo -e "${cyan}╚══════════════════════════════════════════════════════════════╝${reset}"
+    echo -e "${cyan}╚═══════════════════════════════════════��══════════════════════╝${reset}"
     echo ""
     echo -e "${gray}Press Ctrl+C to stop monitoring${reset}"
 }
