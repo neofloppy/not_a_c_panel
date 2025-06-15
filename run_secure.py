@@ -9,6 +9,7 @@ import sys
 import secrets
 import subprocess
 import platform
+import getpass
 from werkzeug.security import generate_password_hash
 import configparser
 
@@ -22,6 +23,7 @@ def load_or_create_config():
     """Load existing config or create new one with prompts"""
     config_file = "config.ini"
     config = configparser.ConfigParser()
+    reconfigure = 'n'  # Default value
     
     if os.path.exists(config_file):
         print(f"Loading existing configuration from {config_file}")
@@ -34,6 +36,7 @@ def load_or_create_config():
         print("Reconfiguring...")
     else:
         print("Creating new secure configuration...")
+        reconfigure = 'y'  # Force configuration for new setup
     
     # Get server configuration
     current_ip = config.get('server', 'ip', fallback='0.0.0.0')
@@ -43,17 +46,42 @@ def load_or_create_config():
     username = input(f"Enter admin username (current: {current_username}): ").strip() or current_username
     
     # Get admin password
-    admin_password = input("Enter admin password (leave empty to keep current): ").strip()
-    if admin_password:
-        password_hash = generate_password_hash(admin_password)
-        print("New password set successfully!")
-    else:
-        password_hash = config.get('admin', 'password_hash', fallback=None)
-        if not password_hash:
-            admin_password = secrets.token_urlsafe(16)
+    password_hash = config.get('admin', 'password_hash', fallback=None)
+    
+    if not password_hash or reconfigure == 'y':
+        print("\n🔐 Setting up admin password...")
+        while True:
+            admin_password = getpass.getpass("Enter admin password (min 6 characters): ").strip()
+            
+            if not admin_password:
+                # If no password provided and we have an existing hash, keep it
+                if password_hash:
+                    print("Keeping existing password.")
+                    break
+                else:
+                    # Generate a secure password if none exists
+                    admin_password = secrets.token_urlsafe(16)
+                    password_hash = generate_password_hash(admin_password)
+                    print(f"Generated admin password: {admin_password}")
+                    print("IMPORTANT: Save this password securely!")
+                    break
+            
+            if len(admin_password) < 6:
+                print("❌ Password must be at least 6 characters long.")
+                continue
+            
+            # Confirm password
+            confirm_password = getpass.getpass("Confirm admin password: ").strip()
+            if admin_password != confirm_password:
+                print("❌ Passwords do not match. Please try again.")
+                continue
+            
+            # Password is valid
             password_hash = generate_password_hash(admin_password)
-            print(f"Generated admin password: {admin_password}")
-            print("IMPORTANT: Save this password securely!")
+            print("✅ Password set successfully!")
+            break
+    else:
+        print("ℹ Using existing password configuration.")
     
     # Get database configuration
     current_db_host = config.get('database', 'host', fallback='localhost')
