@@ -7,7 +7,6 @@ set -e
 
 REPO_URL="https://github.com/neofloppy/not_a_c_panel.git"
 REPO_NAME="not_a_c_panel"
-VENV_DIR="venv"
 
 echo "=============================================="
 echo "  Not a cPanel - Minimal Bootstrap Installer"
@@ -25,22 +24,22 @@ if ! command -v python3 >/dev/null 2>&1; then
     print_status "Python3 not found. Installing..."
     if command -v apt-get >/dev/null 2>&1; then
         sudo apt-get update
-        sudo apt-get install -y python3 python3-venv python3-dev build-essential
+        sudo apt-get install -y python3 python3-pip python3-dev build-essential
         sudo apt-get install -y postgresql postgresql-contrib libpq-dev
     elif command -v yum >/dev/null 2>&1; then
-        sudo yum install -y python3 python3-venv python3-devel gcc
+        sudo yum install -y python3 python3-pip python3-devel gcc
         sudo yum install -y postgresql postgresql-server postgresql-devel
     elif command -v dnf >/dev/null 2>&1; then
-        sudo dnf install -y python3 python3-venv python3-devel gcc
+        sudo dnf install -y python3 python3-pip python3-devel gcc
         sudo dnf install -y postgresql postgresql-server postgresql-devel
     elif command -v pacman >/dev/null 2>&1; then
-        sudo pacman -Sy --noconfirm python python-venv base-devel
+        sudo pacman -Sy --noconfirm python python-pip base-devel
         sudo pacman -Sy --noconfirm postgresql postgresql-libs
     elif command -v zypper >/dev/null 2>&1; then
-        sudo zypper install -y python3 python3-venv python3-devel gcc
+        sudo zypper install -y python3 python3-pip python3-devel gcc
         sudo zypper install -y postgresql postgresql-server-devel
     else
-        print_error "Unsupported package manager. Please install Python3, python3-venv, python3-dev, build-essential, postgresql, and libpq-dev manually."
+        print_error "Unsupported package manager. Please install Python3, python3-pip, python3-dev, build-essential, postgresql, and libpq-dev manually."
         exit 1
     fi
 fi
@@ -76,26 +75,6 @@ elif command -v zypper >/dev/null 2>&1; then
         print_status "Installing PostgreSQL development packages..."
         sudo zypper install -y python3-devel gcc
         sudo zypper install -y postgresql postgresql-server-devel
-    fi
-fi
-
-# Check if python3-venv is available (fixes ensurepip error)
-if ! python3 -m venv --help >/dev/null 2>&1; then
-    print_status "python3-venv is not available. Installing..."
-    if command -v apt-get >/dev/null 2>&1; then
-        sudo apt-get update
-        sudo apt-get install -y python3-venv
-    elif command -v yum >/dev/null 2>&1; then
-        sudo yum install -y python3-venv
-    elif command -v dnf >/dev/null 2>&1; then
-        sudo dnf install -y python3-venv
-    elif command -v pacman >/dev/null 2>&1; then
-        sudo pacman -Sy --noconfirm python-venv
-    elif command -v zypper >/dev/null 2>&1; then
-        sudo zypper install -y python3-venv
-    else
-        print_error "Unsupported package manager. Please install python3-venv manually."
-        exit 1
     fi
 fi
 
@@ -147,28 +126,18 @@ fi
 
 cd "$REPO_NAME"
 
-# Set up Python virtual environment
-if [ ! -d "$VENV_DIR" ]; then
-    print_status "Creating Python virtual environment..."
-    python3 -m venv "$VENV_DIR"
-fi
+print_status "Installing Python dependencies globally..."
+pip3 install --upgrade pip
+pip3 install -r requirements.txt
 
-print_status "Activating virtual environment..."
-. "$VENV_DIR/bin/activate"
-
-print_status "Installing Python dependencies in venv..."
-pip install --upgrade pip
-pip install -r requirements.txt
-
-print_success "Python dependencies installed in venv."
+print_success "Python dependencies installed globally."
 
 echo ""
 print_success "Installation complete!"
 echo ""
 print_status "🔐 NEXT STEPS:"
 echo "   1. cd $REPO_NAME"
-echo "   2. . venv/bin/activate"
-echo "   3. python run_secure.py"
+echo "   2. python3 run_secure.py"
 echo ""
 print_status "The secure setup will:"
 echo "   - Prompt you to set up admin credentials"
@@ -177,7 +146,7 @@ echo "   - Set up firewall rules"
 echo "   - Start the secure server"
 echo ""
 print_status "Alternative: Start server directly (not recommended for first run):"
-echo "   python server.py"
+echo "   python3 server.py"
 echo ""
 
 # Always run secure setup automatically
@@ -193,13 +162,12 @@ if [ ! -t 0 ]; then
         print_error "Cannot access terminal for interactive setup"
         print_status "Please run these commands manually:"
         echo "   cd $REPO_NAME"
-        echo "   . venv/bin/activate" 
-        echo "   python run_secure.py"
+        echo "   python3 run_secure.py"
         exit 1
     }
 fi
 
 # Run the secure setup
-"$VENV_DIR/bin/python" run_secure.py
+python3 run_secure.py
 
 print_success "Bootstrap complete!"

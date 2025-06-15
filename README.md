@@ -15,8 +15,8 @@ curl -fsSL https://raw.githubusercontent.com/neofloppy/not_a_c_panel/master/inst
 
 **What this does:**
 - ✅ Installs all system dependencies (Python3, PostgreSQL, Docker support)
-- ✅ Clones the repository and sets up virtual environment
-- ✅ Installs Python packages automatically
+- ✅ Clones the repository and installs Python packages globally
+- ✅ Installs Python dependencies automatically
 - ✅ Launches secure setup for credentials configuration
 - ✅ Starts server with beautiful NEOFLOPPY monitoring display
 - ✅ **Complete setup in one command!**
@@ -45,15 +45,11 @@ sudo apt install -y postgresql postgresql-contrib libpq-dev
 # CentOS/RHEL:
 # sudo yum install -y python3 python3-pip python3-devel gcc postgresql postgresql-server postgresql-devel
 
-# Create and activate virtual environment
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install Python dependencies
-pip install -r requirements.txt
+# Install Python dependencies globally
+pip3 install -r requirements.txt
 
 # Run secure startup (will configure everything)
-python run_secure.py
+python3 run_secure.py
 ```
 
 ## 📋 What Happens During Setup
