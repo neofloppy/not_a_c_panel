@@ -24,8 +24,8 @@ reset='\033[0m'
 
 # ASCII Art for NEOFLOPPY
 ASCII_ART="
-${red}███╗   ██╗███████╗ ██████╗ ███████╗██╗      █████╗ ██████╗ ██████╗ ██╗   ██╗${reset}
-${red}████╗  ██ ██╔════╝██╔═══██╗██╔════╝██║     ██╔═══██╗██╔══██╗██╔══██╗╚██╗ ██╔╝${reset}
+${red}███╗   ██╗███████╗ ██████╗ ███████╗██╗      ██████╗ ██████╗ ██████╗ ██╗   ██╗${reset}
+${red}████╗  ██║██╔════╝██╔═══██╗██╔════╝██║     ██╔═══██╗██╔══██╗██╔══██╗╚██╗ ██╔╝${reset}
 ${red}██╔██╗ ██║█████╗  ██║   ██║█████╗  ██║     ██║   ██║██████╔╝██████╔╝ ╚████╔╝${reset} 
 ${red}██║╚██╗██║██╔══╝  ██║   ██║██╔══╝  ██║     ██║   ██║██╔═══╝ ██╔═══╝   ╚██╔╝${reset}  
 ${red}██║ ╚████║███████╗╚██████╔╝██║     ███████╗╚██████╔╝██║     ██║        ██║${reset}   
@@ -104,7 +104,7 @@ function display_status() {
     
     # Service status section
     echo -e "${blue}╔══════════════════════════════════════════════════════════════╗${reset}"
-    echo -e "${blue}║${white}                      SERVICE STATUS           ${blue}║${reset}"
+    echo -e "${blue}║${white}                      SERVICE STATUS                          ${blue}║${reset}"
     echo -e "${blue}╚══════════════════════════════════════════════════════════════╝${reset}"
     
     # Check application server
@@ -135,31 +135,46 @@ function display_status() {
     
     # Log window
     echo -e "${cyan}╔══════════════════════════════════════════════════════════════╗${reset}"
-    echo -e "${cyan}║${white}                        EVENT LOG              ${cyan}║${reset}"
-    echo -e "${cyan}╚══════════════════════════════════════════════════════════════╝${reset}"
+    echo -e "${cyan}║${white}                        EVENT LOG                            ${cyan}║${reset}"
+    echo -e "${cyan}╠══════════════════════════════════════════════════════════════╣${reset}"
     
     # Display recent logs in the box
     local log_content=$(get_recent_logs)
     local line_count=0
     
     while IFS= read -r line && [ $line_count -lt $LOG_LINES ]; do
-        # Truncate line if too long and add color based on log level
-        local display_line=$(echo "$line" | cut -c1-62)
-        if [[ $line == *"WARNING"* ]]; then
-            echo -e "${cyan}║${yellow}$display_line${reset}$(printf '%*s' $((62-${#display_line}) ) '')${cyan}║${reset}"
-        elif [[ $line == *"ERROR"* ]]; then
-            echo -e "${cyan}║${red}$display_line${reset}$(printf '%*s' $((62-${#display_line}) ) '')${cyan}║${reset}"
-        elif [[ $line == *"INFO"* ]]; then
-            echo -e "${cyan}║${green}$display_line${reset}$(printf '%*s' $((62-${#display_line}) ) '')${cyan}║${reset}"
+        if [ -n "$line" ]; then
+            # Truncate line if too long (60 chars to fit in box)
+            local display_line=$(echo "$line" | cut -c1-60)
+            local line_length=${#display_line}
+            local padding_length=$((60 - line_length))
+            local padding=""
+            
+            # Create padding if needed
+            if [ $padding_length -gt 0 ]; then
+                padding=$(printf "%*s" $padding_length "")
+            fi
+            
+            # Add color based on log level
+            if [[ $line == *"WARNING"* ]]; then
+                echo -e "${cyan}║${yellow}$display_line${reset}$padding${cyan}║${reset}"
+            elif [[ $line == *"ERROR"* ]]; then
+                echo -e "${cyan}║${red}$display_line${reset}$padding${cyan}║${reset}"
+            elif [[ $line == *"INFO"* ]]; then
+                echo -e "${cyan}║${green}$display_line${reset}$padding${cyan}║${reset}"
+            else
+                echo -e "${cyan}║${gray}$display_line${reset}$padding${cyan}║${reset}"
+            fi
         else
-            echo -e "${cyan}║${gray}$display_line${reset}$(printf '%*s' $((62-${#display_line}) ) '')${cyan}║${reset}"
+            # Empty line
+            echo -e "${cyan}║$(printf '%*s' 60 '')║${reset}"
         fi
         ((line_count++))
     done <<< "$log_content"
     
     # Fill remaining lines if needed
     while [ $line_count -lt $LOG_LINES ]; do
-        echo -e "${cyan}║$(printf '%*s' 62 '')║${reset}"
+        echo -e "${cyan}║$(printf '%*s' 60 '')║${reset}"
         ((line_count++))
     done
     
